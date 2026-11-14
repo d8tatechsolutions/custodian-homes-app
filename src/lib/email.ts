@@ -83,6 +83,7 @@ export interface EmailOptions {
   subject: string;
   html: string;
   text?: string;
+  replyTo?: string;
 }
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
@@ -103,6 +104,7 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
       subject: options.subject,
       html: options.html,
       text: options.text,
+      replyTo: options.replyTo,
     });
     console.log("Email sent:", info.messageId);
     return true;
@@ -483,6 +485,40 @@ export async function sendWelcomeEmail(
   return sendEmail({
     to: email,
     subject: uniqueSubject(`Welcome to ${BRAND.name} - Your account is active`),
+    html,
+    text,
+  });
+}
+
+export interface ContactMessageInput {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+}
+
+export async function sendContactMessage(input: ContactMessageInput): Promise<boolean> {
+  const safeName = escapeHtml(input.name);
+  const safeEmail = escapeHtml(input.email);
+  const safeSubject = escapeHtml(input.subject);
+  const safeMessage = escapeHtml(input.message).replace(/\n/g, "<br />");
+
+  const html = `
+    <div style="font-family: sans-serif; line-height: 1.6; color: #1f2937;">
+      <h2 style="margin: 0 0 12px;">New contact form submission</h2>
+      <p><strong>Name:</strong> ${safeName}</p>
+      <p><strong>Email:</strong> ${safeEmail}</p>
+      <p><strong>Subject:</strong> ${safeSubject}</p>
+      <hr style="margin: 16px 0; border: none; border-top: 1px solid #e5e7eb;" />
+      <p style="white-space: pre-wrap;">${safeMessage}</p>
+    </div>
+  `;
+  const text = `New contact form submission\n\nName: ${input.name}\nEmail: ${input.email}\nSubject: ${input.subject}\n\n${input.message}`;
+
+  return sendEmail({
+    to: BRAND.emails.support,
+    replyTo: input.email,
+    subject: `[Contact] ${input.subject}`,
     html,
     text,
   });
