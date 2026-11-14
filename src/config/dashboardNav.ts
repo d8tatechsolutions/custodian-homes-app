@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeftRight,
   Bell,
@@ -9,7 +10,7 @@ import {
   FileText,
   Heart,
   Home,
-  type LucideIcon,
+  Mail,
   MessagesSquare,
   Search,
   Settings,
@@ -108,6 +109,11 @@ export const adminNav: DashNavItem[] = [
     to: "/dashboard/admin/commissions",
     label: "Commissions",
     icon: Calculator,
+  },
+  {
+    to: "/dashboard/admin/contact-messages",
+    label: "Contact Messages",
+    icon: Mail,
   },
 ];
 export const caretakerNav = buildDashboardNav("caretaker");
