@@ -11,6 +11,14 @@ export const metadata: Metadata = {
 export default function FaqPage() {
   return (
     <MarketingShell>
+      <section className="container pt-16 md:pt-24">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="text-sm font-medium uppercase tracking-widest text-primary">FAQ</p>
+          <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight md:text-5xl">
+            Frequently asked questions
+          </h1>
+        </div>
+      </section>
       <Faq />
       <section className="container pb-20">
         <div className="mx-auto max-w-2xl text-center">

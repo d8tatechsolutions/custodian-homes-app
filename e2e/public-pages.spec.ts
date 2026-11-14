@@ -4,7 +4,7 @@ const PUBLIC_PAGES = [
   { path: "/", heading: /find a home that/i },
   { path: "/about", heading: /calmer way/i },
   { path: "/pricing", heading: /simple, transparent pricing/i },
-  { path: "/faq", heading: /questions, answered/i },
+  { path: "/faq", heading: /frequently asked questions/i },
   { path: "/contact", heading: /get in touch/i },
   { path: "/terms", heading: /terms of service/i },
   { path: "/privacy", heading: /privacy policy/i },
