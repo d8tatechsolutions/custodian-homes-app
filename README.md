@@ -1,4 +1,4 @@
-# Keja Yangu
+# Custodian Homes
 
 A modern property rental and tenant management platform built with Next.js, TypeScript, and MongoDB.
 

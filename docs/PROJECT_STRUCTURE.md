@@ -1,4 +1,4 @@
-# Keja Yangu — Project Structure & Entity Map
+# Custodian Homes — Project Structure & Entity Map
 
 This document is the high-level map of the codebase: what lives where, what each
 entity is responsible for, and how the entities relate. It is intended for new

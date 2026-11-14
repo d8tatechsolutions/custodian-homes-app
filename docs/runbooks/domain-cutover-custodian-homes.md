@@ -112,7 +112,7 @@ Code is backward compatible: the session cookie (`keja-token`), localStorage key
 - `package.json` `name`
 - `docs/PROJECT_STRUCTURE.md`
 - optional `KejaUser` → `AuthUser` rename
-- rename `.opencode/skills/keja-yangu-conventions`
+- rename `.opencode/skills/custodian-homes-conventions`
 
 ## Traps
 

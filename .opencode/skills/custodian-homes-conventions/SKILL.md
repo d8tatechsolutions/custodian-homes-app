@@ -1,9 +1,9 @@
 ---
-name: keja-yangu-conventions
-description: Repo-specific conventions for keja-yangu (Kenyan rental/property platform). Use when working in /home/mds/Desktop/keja-yangu on Next.js App Router routes, Mongoose models, RBAC/auth guards, zod schemas, react-hook-form UI, or Vitest tests; also when verifying changes (biome check, tsc, vitest) or adding API endpoints.
+name: custodian-homes-conventions
+description: Repo-specific conventions for Custodian Homes (Kenyan rental/property platform). Use when working in /home/mds/Desktop/keja-yangu on Next.js App Router routes, Mongoose models, RBAC/auth guards, zod schemas, react-hook-form UI, or Vitest tests; also when verifying changes (biome check, tsc, vitest) or adding API endpoints.
 ---
 
-# keja-yangu conventions
+# custodian-homes conventions
 
 Kenyan rental/housing platform: role dashboards (tenant / caretaker / custodian / owner / system-admin), property hierarchy `blocks → floors → units`, leases & move requests, invoices (Paystack), chat/complaints/announcements, soft-delete + recycle bin.
 
