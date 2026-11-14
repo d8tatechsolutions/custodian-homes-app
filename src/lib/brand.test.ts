@@ -43,7 +43,6 @@ describe("brand identity", () => {
     expect(BRAND.emails).toEqual({
       info: "info@custodianhomes.co.ke",
       support: "support@custodianhomes.co.ke",
-      noReply: "no-reply@custodianhomes.co.ke",
     });
     expect(BRAND_TITLE).toBe("Custodian Homes — Property Rentals & Tenant Management");
     expect(BRAND_TITLE_TEMPLATE).toBe("%s | Custodian Homes");

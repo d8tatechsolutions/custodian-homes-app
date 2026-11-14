@@ -32,7 +32,7 @@ current domain; Phase 4 is the domain cutover and is the only irreversible step.
 | Canonical URL | `https://custodianhomes.co.ke` |
 | General/contact email | `info@custodianhomes.co.ke` |
 | Support email | `support@custodianhomes.co.ke` |
-| Transactional sender | `no-reply@custodianhomes.co.ke` |
+| Transactional sender | `info@custodianhomes.co.ke` |
 | Tagline (unchanged) | `Property Rentals & Tenant Management` |
 | Social handle (assumed) | `@custodianhomes` |
 
@@ -77,7 +77,7 @@ Phase 5 and best done as its own PR.
 | Value | Where | Action |
 |---|---|---|
 | `keja.support@d8tatechsolutions.com` | tenant + custodian settings | replace with `support@custodianhomes.co.ke` — this is a provider mailbox leaking into product copy, so it is a correctness fix, not just branding |
-| `no-reply@keja.co` (code default) | `src/lib/email.ts:100` | `no-reply@custodianhomes.co.ke` |
+| `no-reply@keja.co` (code default) | `src/lib/email.ts:100` | `info@custodianhomes.co.ke` |
 | `EMAIL_FROM` (env override wins) | `.env.example:15`, README | update env + example |
 | `https://keja-yangu.com` | `layout.tsx:22`, `sitemap.ts:3` | `https://custodianhomes.co.ke` |
 | `@kejayangu` | `layout.tsx:41` | `@custodianhomes` (confirm handle) |
@@ -108,7 +108,7 @@ unreadable), and the production MongoDB database name.
     emails: {
       info: "info@custodianhomes.co.ke",
       support: "support@custodianhomes.co.ke",
-      noReply: "no-reply@custodianhomes.co.ke",
+      (noReply retired; default sender is now info@)
     },
   } as const;
   ```
@@ -202,13 +202,13 @@ This section is the short form.
 Order matters. Do not start sending from the new domain before step 3 completes.
 
 1. **Mailboxes.** Create `info@` and `support@custodianhomes.co.ke`; route
-   `no-reply@` to a monitored (or discard) mailbox.
+   `info@` as the transactional sender address.
 2. **DNS for email.** Publish SPF, DKIM and DMARC for `custodianhomes.co.ke`.
 3. **Email provider.** Add and verify the domain with the provider used by
    `src/lib/email.ts` (SMTP/Resend); keep the existing credentials.
 4. **Env on Vercel.** Set, in Production *and* Preview:
    - `NEXT_PUBLIC_APP_URL=https://custodianhomes.co.ke`
-   - `EMAIL_FROM=Custodian Homes <no-reply@custodianhomes.co.ke>`
+   - `EMAIL_FROM=Custodian Homes <info@custodianhomes.co.ke>`
    > `NEXT_PUBLIC_APP_URL` must equal the real origin or `checkSameOrigin`
    > rejects every mutation with 403 — this bit us before.
 5. **Domain.** Add `custodianhomes.co.ke` to the Vercel project, set it as the
