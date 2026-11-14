@@ -12,10 +12,10 @@ export const SupportEmailNote = () => (
     <span>
       Verification and password emails come from{" "}
       <a
-        href={`mailto:${BRAND.emails.noReply}`}
+        href={`mailto:${BRAND.emails.info}`}
         className="font-medium text-foreground underline-offset-4 hover:underline"
       >
-        {BRAND.emails.noReply}
+        {BRAND.emails.info}
       </a>
       . Check spam if you don&apos;t see them. Need a hand? Email{" "}
       <a

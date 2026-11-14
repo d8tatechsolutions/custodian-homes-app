@@ -22,9 +22,9 @@ Create on your mail provider (Google Workspace / Zoho / Resend / SES):
 |---|---|---|
 | `info@custodianhomes.co.ke` | public contact | forward to you |
 | `support@custodianhomes.co.ke` | support (shown in app + email footer) | forward to support desk |
-| `no-reply@custodianhomes.co.ke` | transactional sender | **do not monitor** |
+| `info@custodianhomes.co.ke` | transactional sender | **do not monitor** |
 
-**SMTP trap:** `EMAIL_HOST` defaults to `smtp.gmail.com`. Sending *as* `@custodianhomes.co.ke` through a Gmail account only works if that address is a verified alias on the authenticated account; otherwise Gmail rewrites or rejects the sender. If you are staying on Gmail SMTP, add `no-reply@custodianhomes.co.ke` as an alias and verify it first. **Recommended:** move transactional mail to a provider that authenticates by domain (Resend / Postmark / SES) — the code only needs `EMAIL_HOST/PORT/USER/PASS` updated.
+**SMTP trap:** `EMAIL_HOST` defaults to `smtp.gmail.com`. Sending *as* `@custodianhomes.co.ke` through a Gmail account only works if that address is a verified alias on the authenticated account; otherwise Gmail rewrites or rejects the sender. If you are staying on Gmail SMTP, add `info@custodianhomes.co.ke` as an alias and verify it first. **Recommended:** move transactional mail to a provider that authenticates by domain (Resend / Postmark / SES) — the code only needs `EMAIL_HOST/PORT/USER/PASS` updated.
 
 ## 2. DNS records for `custodianhomes.co.ke`
 
@@ -49,7 +49,7 @@ At the registrar / DNS host:
 | Variable | Value | Notes |
 |---|---|---|
 | `NEXT_PUBLIC_APP_URL` | `https://custodianhomes.co.ke` | **no trailing slash** — a trailing slash breaks CSRF (`checkSameOrigin`) and produces `https://host//auth/verify` links |
-| `EMAIL_FROM` | `Custodian Homes <no-reply@custodianhomes.co.ke>` | overrides the code default; this is the one that actually governs production |
+| `EMAIL_FROM` | `Custodian Homes <info@custodianhomes.co.ke>` | overrides the code default; this is the one that actually governs production |
 | `EMAIL_HOST` | provider SMTP host | |
 | `EMAIL_PORT` | `587` (or `465`) | |
 | `EMAIL_USER` | SMTP username | |
@@ -74,7 +74,7 @@ npx tsx scripts/test-email.ts you@example.com
 ```
 
 Check the received message:
-- `From:` is `Custodian Homes <no-reply@custodianhomes.co.ke>`
+- `From:` is `Custodian Homes <info@custodianhomes.co.ke>`
 - subject + body say Custodian Homes
 - verify link points at `https://custodianhomes.co.ke/auth/verify?token=...`
 - `Authentication-Results` shows `spf=pass`, `dkim=pass`, `dmarc=pass`
@@ -83,7 +83,7 @@ Only after all four pass, set `EMAIL_FROM` in Vercel and redeploy. (Setting it f
 
 ## 6. Smoke tests after cutover
 
-- [ ] Sign up → verification email arrives from `no-reply@custodianhomes.co.ke` → link opens on the new domain → account activates
+- [ ] Sign up → verification email arrives from `info@custodianhomes.co.ke` → link opens on the new domain → account activates
 - [ ] Forgot password → reset link works and lands on new domain
 - [ ] Tenant pays an invoice → Paystack callback URL on new domain → payment recorded
 - [ ] Dashboard mutations (create/update/delete) do not return 403 — confirms CSRF origin match
@@ -116,7 +116,7 @@ Code is backward compatible: the session cookie (`keja-token`), localStorage key
 
 ## Traps
 
-- **`EMAIL_FROM` overrides the code default.** If it is still set to `Keja Yangu <no-reply@keja.co>` in Vercel, every real email keeps the old name/address while the body says Custodian Homes. Clear it or update it.
+- **`EMAIL_FROM` overrides the code default.** If it is still set to `Keja Yangu <no-reply@keja.co>` (or any old value) in Vercel, every real email keeps the old name/address while the body says Custodian Homes. Clear it or update it.
 - **Trailing slash in `NEXT_PUBLIC_APP_URL`.** 403s every mutation and builds `//` links. The code now normalises via `getAppUrl()`, but keep the env value clean anyway.
 - **`NEXT_PUBLIC_APP_URL` is inlined at build time.** Changing it requires a redeploy; a runtime-only change does nothing.
 - **Do not rename the Mongo DB or the session cookie.** Both are deliberately untouched; renaming logs everyone out and breaks sessions.

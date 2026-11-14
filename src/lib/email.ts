@@ -99,7 +99,7 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
     const info = await transporter.sendMail({
       from: process.env.EMAIL_FROM
         ? unquote(process.env.EMAIL_FROM)
-        : `${BRAND.name} <${BRAND.emails.noReply}>`,
+        : `${BRAND.name} <${BRAND.emails.info}>`,
       to: options.to,
       subject: options.subject,
       html: options.html,

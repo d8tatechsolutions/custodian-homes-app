@@ -15,7 +15,6 @@ export const BRAND = {
   emails: {
     info: "info@custodianhomes.co.ke",
     support: "support@custodianhomes.co.ke",
-    noReply: "no-reply@custodianhomes.co.ke",
   },
 } as const;
 
