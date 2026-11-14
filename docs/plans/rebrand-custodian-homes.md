@@ -234,7 +234,7 @@ DNS TTL to 300s a day before cutover.
 | 3 | `.env.example` | `EMAIL_FROM`, comment on line 18; **leave** `MONGODB_URI` db name |
 | 4 | `docs/PROJECT_STRUCTURE.md:1` | Title |
 | 5 | `src/hooks/use-auth.tsx` `KejaUser` | → `AuthUser` (optional, internal only) |
-| 6 | `.opencode/skills/keja-yangu-conventions/` | Rename skill id/dir to match the repo, or leave as historical |
+| 6 | `.opencode/skills/custodian-homes-conventions/` | Rename skill id/dir to match the repo, or leave as historical |
 | 7 | `docs/plans/**`, `.opencode/plans/**` | **Leave** — historical records, not live copy |
 | 8 | `scripts/*.ts` local DB defaults | Leave, or align to `custodian-homes` for fresh clones only |
 
