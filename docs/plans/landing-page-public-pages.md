@@ -1,6 +1,6 @@
 # Plan: Marketing Landing Page + Common Public Pages
 
-**Status:** Phase 1 complete (this document). Phase 3 (build) in progress.
+**Status:** ✅ Delivered (`8c24b56`). Phase 1 (plan) + Phase 3 (build) complete.
 **Branch:** `test/authz-status-semantics` → merged to `dev`.
 **Owner:** Orchestrix (governor) + developer-prime/fast (build).
 
