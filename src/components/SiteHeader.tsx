@@ -11,8 +11,7 @@ import { ThemeToggle } from "./ThemeToggle";
 
 const publicLinks = [
   { href: "/", label: "Home" },
-  { href: "/properties", label: "Properties" },
-  { href: "/marketplace", label: "Marketplace" },
+  { href: "/properties", label: "Find a Home" },
   { href: "/pricing", label: "Pricing" },
 ];
 

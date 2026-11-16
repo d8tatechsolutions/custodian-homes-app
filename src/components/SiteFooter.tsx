@@ -14,7 +14,6 @@ const footerLinks: { label: string; href: string }[] = [
 
 const productLinks: { label: string; href: string }[] = [
   { label: "Find a home", href: "/properties" },
-  { label: "Marketplace", href: "/marketplace" },
   { label: "For owners", href: "/dashboard/admin" },
   { label: "Sign in", href: "/auth" },
 ];
