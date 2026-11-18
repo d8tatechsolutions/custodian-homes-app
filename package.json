@@ -20,7 +20,8 @@
     "seed:clean": "tsx scripts/wipe-and-reseed.ts",
     "reconcile:attributions": "tsx scripts/reconcile-attributions.ts",
     "reconcile:commissions": "tsx scripts/reconcile-commissions.ts",
-    "backfill:commissions": "tsx scripts/backfill-commissions.ts"
+    "backfill:commissions": "tsx scripts/backfill-commissions.ts",
+    "backfill:tasks": "tsx scripts/backfill-task-permissions.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
