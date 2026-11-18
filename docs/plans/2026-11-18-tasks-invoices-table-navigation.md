@@ -78,8 +78,10 @@ Rejected: global admin bypass (unlocks ~73 resource-free call sites, skips the `
 3. Cross-owner access without an assignment is forbidden. Every admin list/detail query carries an owner filter; unfiltered `find({})` is forbidden.
 4. `admin` may **not** perform `PLATFORM_ACTIONS` (system-admin only).
 5. `admin` remains subject to `archived`/`merged` write denial. Allows go **after** lifecycle/platform checks — never at function entry.
-6. `system-admin` keeps the global bypass, empty filter, lifecycle exemption.
+6. `system-admin` keeps the global bypass, lifecycle exemption and `PLATFORM_ACTIONS` exclusivity. Its **authorization** filters stay empty, but its **data** filters are owner-scoped exactly like admin's: access to an arbitrary task is by id, not by list. No unfiltered list query is permitted. *(Amended per Phase 2 ruling — the original "empty filter" wording licensed a cross-tenant enumeration primitive.)*
 7. `custodian`/`caretaker` remain fail-closed on assignments.
+
+> **Tasks are property-scoped only (by design).** `Task` carries no `blockId`/`unitId`, so block- and unit-level delegations cannot grant task access. The admin task paths deliberately use `propertyScopeIds` (property-scoped assignments) rather than `assignedPropertyIds`. Do not "correct" this asymmetry: allowing block/unit delegations would grant task access the data model cannot scope.
 
 **Rollout order is mandatory:** fix data filters and add `ownerId` to `PolicyResource` **before** enabling admin allow.
 
@@ -95,6 +97,17 @@ Rejected: global admin bypass (unlocks ~73 resource-free call sites, skips the `
 - `tasks/route.ts:35-52`: for admin/system-admin, `filter.ownerId = actor.userId` when `propertyScopeIds` is empty; always `$and` owner scope with delegated scope.
 - `tasks/[id]/route.ts`: add an admin ownership guard beside the caretaker/custodian checks (`:30-35, 65-70, 136-138`).
 - `POST /tasks` (`route.ts:93`): derive `ownerId` from the selected property when `propertyId` is present, else `actor.managedByOwnerId || actor.userId`. (`resolveDashboardActor` returns `""` for admins, so `??` currently writes `ownerId: ""`.)
+- **`POST /tasks` is a scoped write (Phase 2 ruling).** Load the property once and reuse it for derivation *and* validation; add `deletedAt: null`. Reject with 403 when the target property is outside the actor's scope:
+
+  | Role | Permitted target | 403 condition |
+  |---|---|---|
+  | `admin` | `property.ownerId === actor.userId` **or** `actor.propertyScopeIds.includes(propertyId)` | `propertyId` present and neither holds |
+  | `caretaker` | `actor.assignedPropertyIds.includes(propertyId)` | not assigned |
+  | `custodian` | assigned **and** `property.ownerId === actor.managedByOwnerId` | either fails |
+  | `system-admin` | any non-deleted property | never on scope grounds |
+
+  No `propertyId`: admin/system-admin get `ownerId = actor.userId`; caretaker/custodian derive it only when their action-filtered scope holds exactly one property, else `400`. Missing or soft-deleted property is `400`, not `403`.
+- **Custodian `DELETE /tasks/[id]` ownership guard (Phase 2 ruling — defect).** `GET` and `PATCH` already guard `task.ownerId !== actor.managedByOwnerId`; `DELETE` omits it and deletes by bare `_id`. Add the identical guard and scope the delete predicate to the loaded task, matching `PATCH`'s `findOneAndUpdate` shape.
 - Align `getTenantScope`’s admin branch (`permissions.ts:473-507`).
 
 **Step 1.3 — Enable the admin profile**
@@ -135,7 +148,9 @@ A caretaker task list currently costs ~10–14 DB round-trips (`requirePermissio
 | 1 | caretaker `manage_tasks` → derived permissions | all three task actions | `src/lib/caretaker-privilege-actions.test.ts` |
 | 2 | caretaker GET list | 200; `ownerId = managedByOwnerId` + `propertyId ∈ assignedPropertyIds` | `src/app/api/v1/tasks/route.test.ts` |
 | 3 | caretaker POST | 201; owner/property from assignment | same |
-| 4 | caretaker, no assignment, GET | 200 empty page (not 403) | same |
+| 4a | caretaker, zero active assignments, GET | **403** (fail-closed gate; invariant 7) | same |
+| 4b | caretaker, gate passes but derived property scope empty | 200 empty page; composed filter present, no `{}` fallback | same |
+| 4c | caretaker with an assignment whose property has no tasks | 200 empty page | same |
 | 5 | caretaker on unassigned property, `[id]` | 403 | new `tasks/[id]/route.test.ts` |
 | 6 | custodian GET | 200, owner filter only | `route.test.ts` |
 | 7 | custodian cross-owner `[id]` | 403 | `[id]/route.test.ts` |
