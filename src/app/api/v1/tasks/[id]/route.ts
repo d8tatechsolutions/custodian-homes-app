@@ -152,6 +152,9 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   if (actor.role === "caretaker" && !actor.assignedPropertyIds.includes(task.propertyId)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  if (actor.role === "custodian" && task.ownerId !== actor.managedByOwnerId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   if (
     actor.role === "admin" &&
     task.ownerId !== actor.userId &&
@@ -160,6 +163,8 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  await Task.deleteOne({ _id: id });
+  // Scope the mutation to the loaded task (matching PATCH's predicate) so a
+  // concurrent owner/property change cannot be deleted by id alone.
+  await Task.deleteOne({ _id: id, ownerId: task.ownerId, propertyId: task.propertyId });
   return NextResponse.json({ data: { id } });
 }

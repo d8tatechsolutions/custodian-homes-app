@@ -19,8 +19,11 @@ import { GET, POST } from "@/app/api/v1/tasks/route";
 const { user, property, task, managementAssignment } = getModelStubs();
 
 const ADMIN_ID = makeObjectId("admin");
+const OTHER_ADMIN_ID = makeObjectId("admin2");
+const CARETAKER_ID = makeObjectId("caretaker");
 const TASK_ID = makeObjectId("task");
 const PROPERTY_ID = makeObjectId("prop");
+const OTHER_PROPERTY_ID = makeObjectId("prop2");
 
 function adminUser() {
   return makeUser({ _id: ADMIN_ID, role: "admin" });
@@ -40,6 +43,32 @@ function adminAssignment() {
         endsAt: null,
       },
     ]),
+  );
+}
+
+/**
+ * Assignment rows for caretaker/custodian actors. `task:create` is granted
+ * explicitly because the shared `ALL_ACTIONS` fixture list predates tasks.
+ */
+function staffAssignments(input: {
+  userId: string;
+  role: "caretaker" | "custodian";
+  propertyIds: string[];
+  permissions: string[];
+}) {
+  managementAssignment.find.mockReturnValue(
+    buildQuery(
+      input.propertyIds.map((propertyId) => ({
+        principalUserId: input.userId,
+        accessRole: input.role,
+        scopeType: "property",
+        propertyId,
+        permissions: [...input.permissions],
+        status: "active",
+        startsAt: new Date("2026-01-01T00:00:00.000Z"),
+        endsAt: null,
+      })),
+    ),
   );
 }
 
@@ -152,6 +181,9 @@ describe("POST /api/v1/tasks", () => {
       }),
     };
     task.create.mockResolvedValue(created);
+    // POST resolves the target property through `findOne({ _id, deletedAt }).select().lean()`
+    // before the create-scope check; ADMIN_ID satisfies the admin predicate (owner-or-scope).
+    property.findOne.mockReturnValue(buildQuery({ _id: PROPERTY_ID, ownerId: ADMIN_ID }));
     property.find.mockReturnValue(buildQuery([{ _id: PROPERTY_ID, title: "Sunlit Studio" }]));
 
     const res = await POST(
@@ -170,5 +202,125 @@ describe("POST /api/v1/tasks", () => {
     expect(res.status).toBe(201);
     const body = await json(res);
     expect((body.data as Record<string, unknown>).title).toBe("Fix tap");
+  });
+
+  it("403 when an admin creates a task on a property they neither own nor hold scope on", async () => {
+    // The admin's only delegation covers PROPERTY_ID; the write targets
+    // OTHER_PROPERTY_ID, which is owned by someone else.
+    user.findById.mockReturnValue(buildQuery(adminUser()));
+    adminAssignment();
+    property.findOne.mockReturnValue(
+      buildQuery({ _id: OTHER_PROPERTY_ID, ownerId: OTHER_ADMIN_ID }),
+    );
+
+    const res = await POST(
+      buildRequest("/api/v1/tasks", {
+        method: "POST",
+        body: {
+          title: "Fix tap",
+          propertyId: OTHER_PROPERTY_ID,
+          priority: "medium",
+          status: "open",
+          dueDate: "2026-01-10",
+        },
+        token: signToken(ADMIN_ID),
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    // The property load ran, so the denial is the create-scope predicate and
+    // not the portfolio permission gate.
+    expect(property.findOne).toHaveBeenCalled();
+    expect(task.create).not.toHaveBeenCalled();
+  });
+
+  it("403 when a caretaker creates a task on a property outside their assignments", async () => {
+    user.findById.mockReturnValue(buildQuery(makeUser({ _id: CARETAKER_ID, role: "caretaker" })));
+    staffAssignments({
+      userId: CARETAKER_ID,
+      role: "caretaker",
+      propertyIds: [PROPERTY_ID],
+      permissions: ["task:create"],
+    });
+    property.find.mockReturnValue(buildQuery([{ _id: PROPERTY_ID, ownerId: ADMIN_ID }]));
+    property.findOne.mockReturnValue(buildQuery({ _id: OTHER_PROPERTY_ID, ownerId: ADMIN_ID }));
+
+    const res = await POST(
+      buildRequest("/api/v1/tasks", {
+        method: "POST",
+        body: {
+          title: "Fix tap",
+          propertyId: OTHER_PROPERTY_ID,
+          priority: "medium",
+          status: "open",
+          dueDate: "2026-01-10",
+        },
+        token: signToken(CARETAKER_ID),
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(task.create).not.toHaveBeenCalled();
+  });
+
+  it("400 when the target property is missing or soft-deleted", async () => {
+    user.findById.mockReturnValue(buildQuery(adminUser()));
+    adminAssignment();
+    // `findOne` matches `{ _id, deletedAt: null }`, so a soft-deleted row yields null here too.
+    property.findOne.mockReturnValue(buildQuery(null));
+
+    const res = await POST(
+      buildRequest("/api/v1/tasks", {
+        method: "POST",
+        body: {
+          title: "Fix tap",
+          propertyId: OTHER_PROPERTY_ID,
+          priority: "medium",
+          status: "open",
+          dueDate: "2026-01-10",
+        },
+        token: signToken(ADMIN_ID),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.error).toBe("Property not found");
+    expect(task.create).not.toHaveBeenCalled();
+  });
+
+  it("400 when a caretaker omits the property and has more than one in scope", async () => {
+    user.findById.mockReturnValue(buildQuery(makeUser({ _id: CARETAKER_ID, role: "caretaker" })));
+    staffAssignments({
+      userId: CARETAKER_ID,
+      role: "caretaker",
+      propertyIds: [PROPERTY_ID, OTHER_PROPERTY_ID],
+      permissions: ["task:create"],
+    });
+    property.find.mockReturnValue(
+      buildQuery([
+        { _id: PROPERTY_ID, ownerId: ADMIN_ID },
+        { _id: OTHER_PROPERTY_ID, ownerId: ADMIN_ID },
+      ]),
+    );
+
+    const res = await POST(
+      buildRequest("/api/v1/tasks", {
+        method: "POST",
+        body: {
+          title: "Fix tap",
+          priority: "medium",
+          status: "open",
+          dueDate: "2026-01-10",
+        },
+        token: signToken(CARETAKER_ID),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.error).toBe("A property must be specified");
+    expect(property.findOne).not.toHaveBeenCalled();
+    expect(task.create).not.toHaveBeenCalled();
   });
 });
