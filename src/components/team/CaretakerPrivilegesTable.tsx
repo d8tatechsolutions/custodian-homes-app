@@ -27,6 +27,7 @@ const PRIVILEGES = [
   { key: "edit_property", label: "Edit property" },
   { key: "delete_assigned_property", label: "Delete assigned property" },
   { key: "manage_tenants", label: "Manage tenants" },
+  { key: "manage_tasks", label: "Manage tasks" },
 ] as const;
 
 interface CaretakerPrivilegesTableProps {
@@ -125,12 +126,15 @@ export const CaretakerPrivilegesTable = ({ canAssign = true }: CaretakerPrivileg
               <TableHead className="text-center">
                 <span className="sr-only">Manage tenants</span>
               </TableHead>
+              <TableHead className="text-center">
+                <span className="sr-only">Manage tasks</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {visible.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                   No caretakers match your search.
                 </TableCell>
               </TableRow>

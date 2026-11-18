@@ -70,9 +70,10 @@ describe("CaretakerPrivilegesTable", () => {
     expect(screen.getByText("amka@keja.co")).toBeInTheDocument();
     // Manage tenants is checked by default
     expect(screen.getByRole("switch", { name: "Manage tenants for Amka" })).toBeChecked();
-    // Exactly 4 privilege switches per row — NOT manage_invoices
-    expect(screen.getAllByRole("switch")).toHaveLength(4);
-    expect(screen.getAllByRole("switch", { name: /for Amka/ })).toHaveLength(4);
+    // Exactly 5 privilege switches per row — NOT manage_invoices
+    expect(screen.getAllByRole("switch")).toHaveLength(5);
+    expect(screen.getAllByRole("switch", { name: /for Amka/ })).toHaveLength(5);
+    expect(screen.queryByRole("switch", { name: /manage invoices/i })).not.toBeInTheDocument();
   });
 
   it("counts properties in the badge", () => {
@@ -97,6 +98,26 @@ describe("CaretakerPrivilegesTable", () => {
       expect(mocks.updatePrivileges).toHaveBeenCalledWith("care-1", [
         "manage_tenants",
         "create_property",
+      ]),
+    );
+    expect(mocks.toast.success).toHaveBeenCalledWith("Amka's privileges updated");
+  });
+
+  it("sends manage_tasks in the toggled privilege list to the API", async () => {
+    const user = userEvent.setup();
+    mocks.list.push(...caretakerRows);
+    mocks.updatePrivileges.mockResolvedValue({
+      ...caretakerRows[0],
+      privileges: ["manage_tenants", "manage_tasks"],
+    });
+    render(<CaretakerPrivilegesTable />);
+
+    await user.click(screen.getByRole("switch", { name: "Manage tasks for Amka" }));
+
+    await waitFor(() =>
+      expect(mocks.updatePrivileges).toHaveBeenCalledWith("care-1", [
+        "manage_tenants",
+        "manage_tasks",
       ]),
     );
     expect(mocks.toast.success).toHaveBeenCalledWith("Amka's privileges updated");
