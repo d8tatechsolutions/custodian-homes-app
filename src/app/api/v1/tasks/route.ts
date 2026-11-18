@@ -8,6 +8,7 @@ import { requirePermission } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { taskInput } from "@/lib/schemas/task";
 import { serializeTask } from "@/lib/tasks";
+import { Property } from "@/models/Property";
 import { Task } from "@/models/Task";
 import { User } from "@/models/User";
 
@@ -32,24 +33,34 @@ export async function GET(request: NextRequest) {
   const actor = await resolveDashboardActor(request, "task:read-own");
   if (actor instanceof NextResponse) return actor;
 
-  const filter: Record<string, unknown> = {};
+  // Owner-scoped admin reads (plan §1.3): own tasks unioned with the active
+  // delegated property scope; an empty delegated scope narrows to own tasks
+  // only, so no admin/system-admin list is ever unfiltered. Every clause is
+  // composed with $and — query params may narrow the scope, never overwrite it.
+  const clauses: Record<string, unknown>[] = [];
   if (actor.role === "caretaker") {
-    filter.ownerId = actor.managedByOwnerId;
-    if (actor.assignedPropertyIds.length > 0) {
-      filter.propertyId = { $in: actor.assignedPropertyIds };
-    } else {
+    if (actor.assignedPropertyIds.length === 0) {
       return NextResponse.json(buildPaginationResult([], 0, page, limit));
     }
+    clauses.push({ ownerId: actor.managedByOwnerId });
+    clauses.push({ propertyId: { $in: actor.assignedPropertyIds } });
   } else if (actor.role === "custodian") {
-    filter.ownerId = actor.managedByOwnerId;
+    clauses.push({ ownerId: actor.managedByOwnerId });
   } else if (actor.role === "admin" || actor.role === "system-admin") {
     if (actor.propertyScopeIds.length > 0) {
-      filter.propertyId = { $in: actor.propertyScopeIds };
+      clauses.push({
+        $or: [{ ownerId: actor.userId }, { propertyId: { $in: actor.propertyScopeIds } }],
+      });
+    } else {
+      clauses.push({ ownerId: actor.userId });
     }
+  } else {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (status) filter.status = status;
-  if (propertyId) filter.propertyId = propertyId;
-  if (assignedTo) filter.assignedTo = assignedTo;
+  if (status) clauses.push({ status });
+  if (propertyId) clauses.push({ propertyId });
+  if (assignedTo) clauses.push({ assignedTo });
+  const filter: Record<string, unknown> = clauses.length === 1 ? clauses[0] : { $and: clauses };
 
   const [tasks, total] = await Promise.all([
     Task.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
@@ -90,7 +101,17 @@ export async function POST(request: NextRequest) {
   const actor = await resolveDashboardActor(request, "task:create");
   if (actor instanceof NextResponse) return actor;
 
-  const ownerId = actor.managedByOwnerId ?? actor.userId;
+  // `managedByOwnerId` is "" for admins, so the fallback must be empty-aware:
+  // an empty string must never become the task's owner. With a chosen property
+  // the owner is derived from it; otherwise it is the managed owner or self.
+  let ownerId = actor.managedByOwnerId || actor.userId;
+  if (parsed.data.propertyId) {
+    const [property] = await Property.find({ _id: parsed.data.propertyId })
+      .select("ownerId")
+      .lean();
+    const propertyOwnerId = property?.ownerId ? String(property.ownerId) : "";
+    ownerId = propertyOwnerId || ownerId;
+  }
 
   const creator = await User.findById(actor.userId).select("name").lean();
 
