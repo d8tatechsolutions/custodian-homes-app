@@ -422,7 +422,7 @@ const CARETAKER_PRIVILEGE_ACTIONS: Record<string, PolicyAction[]> = {
   process_move_requests: ["move-request:create", "move-request:manage"],
   manage_invoices: ["invoice:read", "invoice:manage", "invoice:mark-paid", "invoice:generate"],
   manage_complaints: ["complaint:manage"],
-  manage_tasks: ["task:manage"],
+  manage_tasks: ["task:read-own", "task:create", "task:manage"],
   manage_announcements: ["announcement:read", "announcement:manage"],
   send_messages: ["chat:read-own", "chat:send", "chat:manage"],
   manage_documents: ["document:read-own", "document:manage"],
