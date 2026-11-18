@@ -66,6 +66,7 @@ const userSchema = new Schema<IUser>(
         "process_move_requests",
         "manage_invoices",
         "manage_complaints",
+        "manage_tasks",
         "manage_announcements",
         "send_messages",
         "manage_documents",
