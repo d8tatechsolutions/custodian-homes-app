@@ -2,23 +2,25 @@ import jwt from "jsonwebtoken";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
+  deriveAssignmentScope,
+  resolveRequestContext,
+  type StaffAccessRole,
+} from "@/lib/auth-scope";
+import {
+  type ActorContext,
   evaluateActorPolicy,
   evaluatePortfolioPolicy,
-  loadActorContext,
 } from "@/lib/authorization";
 import {
+  type AssignmentLike,
   type PolicyResource as CorePolicyResource,
   type PolicyAction,
   TENANT_ACTIONS,
 } from "@/lib/authorization-policy";
 import { getJwtSecret } from "@/lib/jwt";
-import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
 import { loadUnitResource } from "@/lib/policy-resources";
-import { Lease } from "@/models/Lease";
 import { ManagementAssignment } from "@/models/ManagementAssignment";
-import { Unit } from "@/models/Unit";
-import { User } from "@/models/User";
 
 export type Role = "tenant" | "caretaker" | "custodian" | "admin" | "broker" | "system-admin";
 
@@ -180,8 +182,10 @@ export function toPolicyResource(
   const blockId = stringId(resource.blockId);
   const unitId = stringId(resource.unitId);
   if (!propertyId) return undefined;
+  const ownerId = stringId(resource.ownerId);
   return {
     propertyId,
+    ...(ownerId ? { ownerId } : {}),
     ...(blockId ? { blockId } : {}),
     ...(unitId ? { unitId } : {}),
     ...(resource.lifecycleState ? { lifecycleState: resource.lifecycleState } : {}),
@@ -199,8 +203,10 @@ async function resolvePolicyResource(
   if (!resolved.ok || resolved.resource.propertyId !== requested.propertyId) return null;
   if (requested.blockId && resolved.resource.blockId !== requested.blockId) return null;
 
+  const ownerId = requested.ownerId ?? resolved.resource.ownerId;
   return {
     ...resolved.resource,
+    ...(ownerId ? { ownerId } : {}),
     lifecycleState: requested.lifecycleState ?? resolved.resource.lifecycleState,
   };
 }
@@ -220,28 +226,14 @@ export async function requirePermission(
   action: Action,
   opts?: { resource?: PermissionResource },
 ): Promise<NextResponse | null> {
-  const token = request.cookies.get("keja-token")?.value;
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await resolveRequestContext(request);
+  if (!ctx.auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let userId: string;
-  let tokenVersion: number;
-  try {
-    const payload = jwt.verify(token, getJwtSecret()) as {
-      userId: string;
-      tokenVersion?: number;
-    };
-    userId = payload.userId;
-    tokenVersion = payload.tokenVersion ?? 0;
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  await connectToDatabase();
-  const user = await User.findById(userId).select("-passwordHash").lean();
+  const user = ctx.user;
   if (!user?.isActive) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if ((user.tokenVersion ?? 0) !== tokenVersion) {
+  if ((user.tokenVersion ?? 0) !== (ctx.auth.tokenVersion ?? 0)) {
     return NextResponse.json({ error: "Session expired" }, { status: 401 });
   }
 
@@ -272,10 +264,10 @@ export async function requirePermission(
     }
   }
 
-  const context = await loadActorContext(userId);
-  if (!context) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const context: ActorContext = {
+    actor: { userId: String(user._id), role: user.role, isActive: user.isActive },
+    assignments: await ctx.assignments(),
+  };
 
   // A route that supplies a real resource is decided against that scope. A
   // route without a concrete resource (list endpoints, collection creates) is
@@ -291,6 +283,14 @@ export async function requirePermission(
       }
       policyResource = resolved;
     }
+  }
+
+  // Fail closed (plan Step 1.1): an admin resource-scoped check without a
+  // known owner is denied — an absent owner must never match anything. The
+  // owner-scoped admin allow (WP3) lands on top of this guard, after the
+  // lifecycle/platform checks inside the policy.
+  if (policyResource && user.role === "admin" && !policyResource.ownerId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const decision = policyResource
@@ -329,69 +329,18 @@ export interface StaffAssignmentScope extends AdminAssignmentScope {
   hasAssignments: boolean;
 }
 
-type StaffAccessRole = "admin" | "custodian" | "caretaker";
-
 async function getAssignmentScope(
   userId: string,
   accessRole: StaffAccessRole,
   action: Action,
 ): Promise<StaffAssignmentScope> {
-  const now = new Date();
+  await connectToDatabase();
   const assignments = await ManagementAssignment.find({
     principalUserId: userId,
     accessRole,
     status: "active",
   }).lean();
-  const activeAssignments = assignments.filter(
-    (assignment) =>
-      (assignment.permissions ?? []).includes(action) &&
-      (!assignment.startsAt || assignment.startsAt <= now) &&
-      (!assignment.endsAt || assignment.endsAt > now),
-  );
-  const assignedPropertyIds = [
-    ...new Set(activeAssignments.map((assignment) => assignment.propertyId)),
-  ];
-  const propertyScopeIds = [
-    ...new Set(
-      activeAssignments
-        .filter((assignment) => assignment.scopeType === "property")
-        .map((assignment) => assignment.propertyId),
-    ),
-  ];
-  const assignedBlockIds = [
-    ...new Set(
-      activeAssignments
-        .filter((assignment) => assignment.scopeType === "block" && assignment.blockId)
-        .map((assignment) => assignment.blockId),
-    ),
-  ];
-  const unitScopeQueries: Record<string, unknown>[] = [];
-  for (const assignment of activeAssignments) {
-    if (assignment.scopeType === "block" && assignment.blockId) {
-      unitScopeQueries.push({ propertyId: assignment.propertyId, blockId: assignment.blockId });
-    } else if (assignment.scopeType === "unit" && assignment.unitId) {
-      unitScopeQueries.push({ _id: assignment.unitId, propertyId: assignment.propertyId });
-    }
-  }
-  const scopedUnits = unitScopeQueries.length
-    ? await Unit.find({ $or: unitScopeQueries }).select("_id").lean()
-    : [];
-  const assignedUnitIds = [...new Set(scopedUnits.map((unit) => String(unit._id)))];
-  const leases = assignedUnitIds.length
-    ? await Lease.find({ unitId: { $in: assignedUnitIds }, status: "active" })
-        .select("tenantId")
-        .lean()
-    : [];
-  const assignedTenantIds = [...new Set(leases.map((lease) => String(lease.tenantId)))];
-
-  return {
-    assignedPropertyIds,
-    propertyScopeIds,
-    assignedBlockIds,
-    assignedUnitIds,
-    assignedTenantIds,
-    hasAssignments: activeAssignments.length > 0,
-  };
+  return deriveAssignmentScope(assignments as unknown as AssignmentLike[], accessRole, action);
 }
 
 export async function getAdminAssignmentScope(
@@ -455,23 +404,28 @@ export async function getTenantScope(
   request: NextRequest,
   action: TenantScopeAction = "tenant:manage",
 ): Promise<NextResponse | TenantScope> {
-  const auth = authenticate(request);
-  if (!auth) {
+  const ctx = await resolveRequestContext(request);
+  if (!ctx.auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await connectToDatabase();
-  const user = await User.findById(auth.userId).select("-passwordHash").lean();
+  const user = ctx.user;
   if (!user?.isActive) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const userId = String(user._id);
   const managedByOwnerId =
-    user.role === "custodian" || user.role === "caretaker" ? await getManagedOwnerId(userId) : "";
+    user.role === "custodian" || user.role === "caretaker" ? await ctx.managedOwnerId() : "";
 
   if (user.role === "admin") {
-    const assignmentScope = await getAdminAssignmentScope(userId, action);
+    const { hasAssignments, ...assignmentScope } = await ctx.assignmentScope("admin", action);
+    // Aligned with requirePermission (plan §1.1 cause C3): an admin without
+    // an active assignment granting the action is denied, not handed an
+    // empty scope that silently reads as "no rows".
+    if (!hasAssignments) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const tenantClauses: Record<string, unknown>[] = [];
     const leaseClauses: Record<string, unknown>[] = [];
@@ -508,7 +462,7 @@ export async function getTenantScope(
   if (user.role === "custodian" || user.role === "caretaker") {
     // Assignment-only scoping (clean slate): staff without an active
     // assignment have no scope and are denied.
-    const staffScope = await getStaffAssignmentScope(userId, user.role, action);
+    const staffScope = await ctx.assignmentScope(user.role, action);
     if (!staffScope.hasAssignments) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

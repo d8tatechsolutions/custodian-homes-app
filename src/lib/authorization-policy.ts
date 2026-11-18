@@ -30,6 +30,11 @@ export interface PolicyActor {
 }
 
 export interface PolicyResource {
+  /**
+   * Owning user id. Admin resource-scoped checks fail closed when it is
+   * absent: an unknown owner must never be treated as "matches anything".
+   */
+  ownerId?: string;
   propertyId?: string;
   blockId?: string;
   unitId?: string;

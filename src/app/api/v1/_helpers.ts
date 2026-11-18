@@ -1,18 +1,11 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { getManagedOwnerId } from "@/lib/managed-owner";
+import { resolveRequestContext } from "@/lib/auth-scope";
 import { connectToDatabase } from "@/lib/mongoose";
-import {
-  type Action,
-  authenticate,
-  getAdminAssignmentScope,
-  getStaffAssignmentScope,
-  type Role,
-} from "@/lib/permissions";
+import type { Action, Role } from "@/lib/permissions";
 import { Property } from "@/models/Property";
 import { Tenant } from "@/models/Tenant";
 import { Unit } from "@/models/Unit";
-import { User } from "@/models/User";
 
 export interface InvoiceActor {
   role: Role;
@@ -31,20 +24,19 @@ export async function resolveInvoiceActor(
   request: NextRequest,
   action?: Action,
 ): Promise<InvoiceActor | NextResponse> {
-  const auth = authenticate(request);
-  if (!auth) {
+  const ctx = await resolveRequestContext(request);
+  if (!ctx.auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await connectToDatabase();
-  const user = await User.findById(auth.userId).select("-passwordHash").lean();
+  const user = ctx.user;
   if (!user?.isActive) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const userId = String(user._id);
   const managedByOwnerId =
-    user.role === "custodian" || user.role === "caretaker" ? await getManagedOwnerId(userId) : "";
+    user.role === "custodian" || user.role === "caretaker" ? await ctx.managedOwnerId() : "";
   let assignedPropertyIds: string[] = [];
   let propertyScopeIds: string[] = [];
   let assignedBlockIds: string[] = [];
@@ -55,7 +47,7 @@ export async function resolveInvoiceActor(
 
   if ((user.role === "custodian" || user.role === "caretaker") && action) {
     // Assignment-only scoping: un-backfilled staff get empty scope.
-    const staffScope = await getStaffAssignmentScope(userId, user.role, action);
+    const staffScope = await ctx.assignmentScope(user.role, action);
     assignedPropertyIds = staffScope.assignedPropertyIds;
     propertyScopeIds = staffScope.propertyScopeIds;
     assignedBlockIds = staffScope.assignedBlockIds;
@@ -65,7 +57,7 @@ export async function resolveInvoiceActor(
   }
 
   if (user.role === "admin" && action) {
-    const scope = await getAdminAssignmentScope(userId, action);
+    const scope = await ctx.assignmentScope("admin", action);
     assignedPropertyIds = scope.assignedPropertyIds;
     propertyScopeIds = scope.propertyScopeIds;
     assignedBlockIds = scope.assignedBlockIds;
@@ -87,16 +79,14 @@ export async function resolveInvoiceActor(
 }
 
 export async function resolveTenantActor(request: NextRequest): Promise<string | NextResponse> {
-  const auth = authenticate(request);
-  if (!auth) {
+  const ctx = await resolveRequestContext(request);
+  if (!ctx.auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await connectToDatabase();
-  const user = await User.findById(auth.userId).select("role").lean();
-  if (user?.role !== "tenant") {
+  if (ctx.user?.role !== "tenant") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  return auth.userId;
+  return ctx.auth.userId;
 }
 
 export interface DashboardActor {
@@ -125,20 +115,19 @@ export async function resolveDashboardActor(
   request: NextRequest,
   action?: Action,
 ): Promise<DashboardActor | NextResponse> {
-  const auth = authenticate(request);
-  if (!auth) {
+  const ctx = await resolveRequestContext(request);
+  if (!ctx.auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await connectToDatabase();
-  const user = await User.findById(auth.userId).select("-passwordHash").lean();
+  const user = ctx.user;
   if (!user?.isActive) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const userId = String(user._id);
   const managedByOwnerId =
-    user.role === "custodian" || user.role === "caretaker" ? await getManagedOwnerId(userId) : "";
+    user.role === "custodian" || user.role === "caretaker" ? await ctx.managedOwnerId() : "";
   let assignedPropertyIds: string[] = [];
   let tenantIds: string[] = [];
   let tenantPropertyIds: string[] = [];
@@ -152,7 +141,7 @@ export async function resolveDashboardActor(
 
   if ((user.role === "custodian" || user.role === "caretaker") && action) {
     // Assignment-only scoping: un-backfilled staff get empty scope.
-    const staffScope = await getStaffAssignmentScope(userId, user.role, action);
+    const staffScope = await ctx.assignmentScope(user.role, action);
     assignedPropertyIds = staffScope.assignedPropertyIds;
     propertyScopeIds = staffScope.propertyScopeIds;
     assignedBlockIds = staffScope.assignedBlockIds;
@@ -162,7 +151,7 @@ export async function resolveDashboardActor(
   }
 
   if (user.role === "admin" && action) {
-    const scope = await getAdminAssignmentScope(userId, action);
+    const scope = await ctx.assignmentScope("admin", action);
     assignedPropertyIds = scope.assignedPropertyIds;
     propertyScopeIds = scope.propertyScopeIds;
     assignedBlockIds = scope.assignedBlockIds;
@@ -175,9 +164,7 @@ export async function resolveDashboardActor(
   // One Tenant query supplies the bound row ids, property ids and owner ids
   // (the split `resolveTenantIds` query is folded in for a single round-trip).
   if (user.role === "tenant") {
-    const rows = await Tenant.find({ userId, deletedAt: null })
-      .select("_id propertyId ownerId")
-      .lean();
+    const rows = await ctx.tenantRows();
     tenantIds = rows.map((t) => String(t._id));
     tenantPropertyIds = rows.map((t) => t.propertyId).filter(Boolean);
     tenantOwnerIds = rows.map((t) => t.ownerId).filter(Boolean);
