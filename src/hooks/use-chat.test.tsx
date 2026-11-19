@@ -189,6 +189,20 @@ describe("useChatMutations", () => {
     });
   });
 
+  it("startThread omits propertyId for a property-less thread", async () => {
+    stubFetch({ json: { data: thread } });
+    const { result } = renderHook(() => useChatMutations());
+
+    await act(async () => {
+      await result.current.startThread("agent-1", "custodian");
+    });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith("/api/v1/chat/threads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipientId: "agent-1", role: "custodian" }),
+    });
+  });
+
   it("sendMessage throws the API error on a non-ok response", async () => {
     stubFetch({ ok: false, json: { error: "Thread not found" } });
     const { result } = renderHook(() => useChatMutations());

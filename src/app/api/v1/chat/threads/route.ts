@@ -156,61 +156,66 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const propertyIds = [...new Set(rows.map((row) => row.propertyId))];
-  let propertyId = parsed.data.propertyId;
+  const { recipientId, role } = parsed.data;
+  const suppliedPropertyId = parsed.data.propertyId;
+  const propertyScoped = Boolean(suppliedPropertyId);
   let row: (typeof rows)[number] | undefined;
-  if (propertyIds.length === 1) {
-    propertyId = propertyIds[0];
-    row = rows.find((candidate) => candidate.propertyId === propertyId);
-  } else {
-    if (!propertyId) {
-      return NextResponse.json(
-        { error: "Property is required — your account maps to multiple properties" },
-        { status: 400 },
-      );
-    }
-    row = rows.find((candidate) => candidate.propertyId === propertyId);
+  let propertyId = "";
+  let ownerId = recipientId;
+
+  if (propertyScoped) {
+    row = rows.find((candidate) => candidate.propertyId === suppliedPropertyId);
     if (!row) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    propertyId = suppliedPropertyId as string;
+
+    const property = await Property.findById(propertyId).select("ownerId").lean();
+    if (!property) {
+      return NextResponse.json({ error: "Property not found" }, { status: 404 });
+    }
+    ownerId = property.ownerId;
+
+    let agentMatchesRole = false;
+    if (role === "owner") {
+      agentMatchesRole = property.ownerId === recipientId;
+    } else {
+      const staffAssignment = await ManagementAssignment.findOne({
+        principalUserId: recipientId,
+        propertyId,
+        accessRole: role,
+        status: "active",
+      }).lean();
+      agentMatchesRole = Boolean(staffAssignment);
+    }
+    if (!agentMatchesRole) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  } else {
+    row = rows[0];
   }
-  if (!propertyId || !row) {
+  if (!row) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const property = await Property.findById(propertyId).select("ownerId").lean();
-  if (!property) {
-    return NextResponse.json({ error: "Property not found" }, { status: 404 });
-  }
-  const recipientId = parsed.data.recipientId;
-  let agentMatchesRole = parsed.data.role === "owner" && property.ownerId === recipientId;
-  if (!agentMatchesRole && parsed.data.role === "caretaker") {
-    const caretakerAssignment = await ManagementAssignment.findOne({
-      principalUserId: recipientId,
-      propertyId,
-      accessRole: "caretaker",
-      status: "active",
-    }).lean();
-    agentMatchesRole = Boolean(caretakerAssignment);
-  }
-  if (!agentMatchesRole) {
+  const expectedUserRole = role === "owner" ? "admin" : role;
+  const agent = await User.findById(recipientId).select("role isActive").lean();
+  if (!agent || agent.role !== expectedUserRole) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  const agent = await User.findById(recipientId).select("role").lean();
-  const roleMatches =
-    parsed.data.role === "owner" ? agent?.role === "admin" : agent?.role === "caretaker";
-  if (!agent || !roleMatches) {
+  if (!propertyScoped && agent.isActive === false) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const now = new Date();
+  const tenantId = String(row._id);
   try {
     const thread = await ChatThread.create({
-      tenantId: String(row._id),
+      tenantId,
       propertyId,
-      ownerId: row.ownerId,
+      ownerId,
       agentUserId: recipientId,
-      agentRole: parsed.data.role,
+      agentRole: role,
       lastMessageAt: now,
       lastMessageText: "",
       tenantLastReadAt: now,
@@ -218,7 +223,7 @@ export async function POST(request: NextRequest) {
     });
     const data = await buildThreadResponse(
       String(thread._id),
-      String(row._id),
+      tenantId,
       recipientId,
       propertyId,
       actor,
@@ -231,7 +236,7 @@ export async function POST(request: NextRequest) {
     if (!isDuplicateKeyError(error)) throw error;
 
     const existing = await ChatThread.findOne({
-      tenantId: String(row._id),
+      tenantId,
       propertyId,
       agentUserId: recipientId,
     }).lean();

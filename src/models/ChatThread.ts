@@ -1,11 +1,13 @@
 import mongoose, { type InferSchemaType, model, Schema } from "mongoose";
-import { MESSAGE_SENDER_ROLES, type MessageSenderRole } from "@/lib/domain-enums";
+import {
+  CHAT_AGENT_ROLES,
+  type ChatAgentRole,
+  MESSAGE_SENDER_ROLES,
+  type MessageSenderRole,
+} from "@/lib/domain-enums";
 
-export type { MessageSenderRole };
-export { MESSAGE_SENDER_ROLES };
-
-export const CHAT_AGENT_ROLES = ["owner", "caretaker"] as const;
-export type ChatAgentRole = (typeof CHAT_AGENT_ROLES)[number];
+export type { ChatAgentRole, MessageSenderRole };
+export { CHAT_AGENT_ROLES, MESSAGE_SENDER_ROLES };
 
 export interface IChatThread {
   tenantId: string;
@@ -22,7 +24,7 @@ export interface IChatThread {
 const chatThreadSchema = new Schema<IChatThread>(
   {
     tenantId: { type: String, required: true },
-    propertyId: { type: String, required: true },
+    propertyId: { type: String, required: false },
     ownerId: { type: String, required: true },
     agentUserId: { type: String, required: true },
     agentRole: { type: String, enum: [...CHAT_AGENT_ROLES], default: "owner" },

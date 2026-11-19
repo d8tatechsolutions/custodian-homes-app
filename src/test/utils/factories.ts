@@ -1,4 +1,4 @@
-import type { PropertyPurpose } from "@/lib/domain-enums";
+import type { ChatAgentRole, MessageSenderRole, PropertyPurpose } from "@/lib/domain-enums";
 import type { Privilege, Role } from "@/lib/permissions";
 
 const HEX_CHARS = "abcdef0123456789";
@@ -436,7 +436,7 @@ export interface TestChatThread {
   propertyId: string;
   ownerId: string;
   agentUserId: string;
-  agentRole: "owner" | "caretaker";
+  agentRole: ChatAgentRole;
   lastMessageAt: Date;
   lastMessageText: string;
   tenantLastReadAt?: Date;
@@ -467,7 +467,7 @@ export interface TestChatMessage {
   _id: string;
   threadId: string;
   senderUserId: string;
-  senderRole: "tenant" | "owner" | "caretaker" | "custodian";
+  senderRole: MessageSenderRole;
   text: string;
   createdAt?: Date;
   updatedAt?: Date;

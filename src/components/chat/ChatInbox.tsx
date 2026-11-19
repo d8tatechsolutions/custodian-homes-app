@@ -15,12 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  useChatContacts,
-  useChatMutations,
-  useChatThreads,
-  useThreadMessages,
-} from "@/hooks/use-chat";
+import { useChatMutations, useChatThreads, useThreadMessages } from "@/hooks/use-chat";
 import { relativeTime } from "@/lib/format";
 import { matchesQuery } from "@/lib/search";
 
@@ -52,8 +47,9 @@ export interface ChatInboxProps {
 
 /**
  * Shared chat body for the tenant Messages page and the staff Communications
- * inbox. Tenants get a "New conversation" picker over `/api/v1/chat/contacts`;
- * staff see the tenant as the contact (the route serializes per viewer role).
+ * inbox. Tenants get a "New conversation" picker that resolves staff by exact
+ * email/phone; staff see the tenant as the contact (the route serializes per
+ * viewer role).
  */
 export function ChatInbox({
   canStartConversation = false,
@@ -99,11 +95,13 @@ export function ChatInbox({
 
   const beginConversation = async (contact: {
     userId: string;
-    role: "owner" | "caretaker";
-    propertyId: string;
+    role: "owner" | "caretaker" | "custodian";
+    propertyId?: string;
   }) => {
     try {
-      const thread = await startThread(contact.userId, contact.role, contact.propertyId);
+      const thread = contact.propertyId
+        ? await startThread(contact.userId, contact.role, contact.propertyId)
+        : await startThread(contact.userId, contact.role);
       refetch();
       setSelectedId(thread._id);
       setPickerOpen(false);
@@ -273,6 +271,19 @@ export function ChatInbox({
   );
 }
 
+type StaffSearchResult = { id: string; name: string; role: string };
+
+function chatRoleForUserRole(role: string): "owner" | "caretaker" | "custodian" | null {
+  if (role === "admin" || role === "system-admin") return "owner";
+  if (role === "caretaker") return "caretaker";
+  if (role === "custodian") return "custodian";
+  return null;
+}
+
+function staffRoleLabel(role: "owner" | "caretaker" | "custodian") {
+  return role === "owner" ? "Landlord" : role === "custodian" ? "Custodian" : "Caretaker";
+}
+
 function NewConversationDialog({
   open,
   onOpenChange,
@@ -280,49 +291,93 @@ function NewConversationDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelect: (contact: { userId: string; role: "owner" | "caretaker"; propertyId: string }) => void;
+  onSelect: (contact: {
+    userId: string;
+    role: "owner" | "caretaker" | "custodian";
+    propertyId?: string;
+  }) => void;
 }) {
-  const { items, loading } = useChatContacts(open);
+  const [query, setQuery] = useState("");
+  const [result, setResult] = useState<StaffSearchResult | null>(null);
+  const [searched, setSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const search = async () => {
+    const contact = query.trim();
+    if (!contact) return;
+    const param = contact.includes("@") ? "email" : "phone";
+    setSearching(true);
+    setError(null);
+    setResult(null);
+    setSearched(false);
+    try {
+      const res = await fetch(`/api/v1/users/search?${param}=${encodeURIComponent(contact)}`);
+      const json = await res.json();
+      if (res.status === 409) {
+        setError(json.error ?? "Those details belong to different accounts.");
+        return;
+      }
+      if (!res.ok) {
+        setError(json.error ?? "Could not look up that contact.");
+        return;
+      }
+      setResult((json.data ?? [])[0] ?? null);
+      setSearched(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const chatRole = result ? chatRoleForUserRole(result.role) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New conversation</DialogTitle>
-          <DialogDescription>Choose who you want to message.</DialogDescription>
+          <DialogDescription>
+            Search by the email or phone number of a caretaker, custodian, or landlord.
+          </DialogDescription>
         </DialogHeader>
-        {loading ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">Loading contacts…</p>
-        ) : items.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            No contacts yet — your landlord and caretaker will appear here once you're linked to a
-            property.
+        <div className="flex items-center gap-2">
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void search();
+            }}
+            placeholder="Email or phone number"
+            aria-label="Email or phone number"
+          />
+          <Button type="button" disabled={!query.trim() || searching} onClick={() => void search()}>
+            {searching ? "Searching…" : "Search"}
+          </Button>
+        </div>
+        {error && (
+          <p className="text-sm text-destructive" role="alert">
+            {error}
           </p>
-        ) : (
-          <div className="space-y-2">
-            {items.map((contact) => (
-              <button
-                key={`${contact.userId}-${contact.propertyId}`}
-                type="button"
-                className="flex w-full items-center gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-muted/50"
-                onClick={() =>
-                  onSelect({
-                    userId: contact.userId,
-                    role: contact.role,
-                    propertyId: contact.propertyId,
-                  })
-                }
-              >
-                <ContactAvatar name={contact.name} className="h-10 w-10" />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{contact.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {contact.role === "owner" ? "Landlord" : "Caretaker"} · {contact.property}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
+        )}
+        {!error && searched && !result && (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No staff member found. Check the email or phone number and try again.
+          </p>
+        )}
+        {result && chatRole && (
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-muted/50"
+            onClick={() => onSelect({ userId: result.id, role: chatRole })}
+          >
+            <ContactAvatar name={result.name} className="h-10 w-10" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{result.name}</p>
+              <p className="truncate text-xs text-muted-foreground">{staffRoleLabel(chatRole)}</p>
+            </div>
+          </button>
         )}
       </DialogContent>
     </Dialog>

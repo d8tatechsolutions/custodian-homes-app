@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage, ChatThread } from "@/types/communications";
 
 const mocks = vi.hoisted(() => {
@@ -103,6 +103,10 @@ describe("ChatInbox", () => {
     mocks.toast.error.mockClear();
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("lists threads and opens one on click", async () => {
     mocks.threads.push(thread);
     const user = userEvent.setup();
@@ -133,24 +137,63 @@ describe("ChatInbox", () => {
     expect(screen.queryByRole("button", { name: /new conversation/i })).not.toBeInTheDocument();
   });
 
-  it("starts a conversation from the tenant picker", async () => {
-    mocks.contacts.push({
-      userId: "owner-1",
-      name: "Test Owner",
-      role: "owner",
-      propertyId: "prop-1",
-      property: "Sunset Villa",
-    });
+  it("starts a conversation from the tenant search picker", async () => {
     mocks.startThread.mockResolvedValue(thread);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: "owner-1", name: "Test Owner", role: "admin" }] }),
+      }),
+    );
     const user = userEvent.setup();
     render(<ChatInbox canStartConversation />);
 
     await user.click(screen.getByRole("button", { name: /new conversation/i }));
+    await user.type(screen.getByPlaceholderText(/email or phone number/i), "owner@keja.co");
+    await user.click(screen.getByRole("button", { name: /search/i }));
     await user.click(await screen.findByRole("button", { name: /test owner/i }));
 
-    await waitFor(() =>
-      expect(mocks.startThread).toHaveBeenCalledWith("owner-1", "owner", "prop-1"),
-    );
+    await waitFor(() => expect(mocks.startThread).toHaveBeenCalledWith("owner-1", "owner"));
+    expect(fetch).toHaveBeenCalledWith("/api/v1/users/search?email=owner%40keja.co");
     expect(mocks.refetch).toHaveBeenCalled();
+  });
+
+  it("searches by phone and shows an empty state when no staff member matches", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ data: [] }) }),
+    );
+    const user = userEvent.setup();
+    render(<ChatInbox canStartConversation />);
+
+    await user.click(screen.getByRole("button", { name: /new conversation/i }));
+    await user.type(screen.getByPlaceholderText(/email or phone number/i), "+254712345678");
+    await user.click(screen.getByRole("button", { name: /search/i }));
+
+    expect(await screen.findByText(/no staff member found/i)).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith("/api/v1/users/search?phone=%2B254712345678");
+  });
+
+  it("shows the conflict message from a 409 lookup", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: "Email and phone belong to different accounts" }),
+      }),
+    );
+    const user = userEvent.setup();
+    render(<ChatInbox canStartConversation />);
+
+    await user.click(screen.getByRole("button", { name: /new conversation/i }));
+    await user.type(screen.getByPlaceholderText(/email or phone number/i), "owner@keja.co");
+    await user.click(screen.getByRole("button", { name: /search/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Email and phone belong to different accounts",
+    );
   });
 });

@@ -12,7 +12,6 @@ import { chatMessageInput } from "@/lib/schemas";
 import { ChatMessage } from "@/models/ChatMessage";
 import { ChatThread } from "@/models/ChatThread";
 import { Tenant } from "@/models/Tenant";
-import { User } from "@/models/User";
 
 type ThreadRow = { tenantId: string; ownerId: string; agentUserId: string; propertyId: string };
 
@@ -99,13 +98,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const thread = await ChatThread.findById(id).lean();
   if (!thread || !isParticipant(thread, actor)) {
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
-  }
-
-  if (actor.role === "caretaker") {
-    const user = await User.findById(actor.userId).select("privileges").lean();
-    if (!user?.privileges?.includes("send_messages")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
   }
 
   const message = await ChatMessage.create({

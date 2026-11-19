@@ -353,7 +353,7 @@ describe("POST /api/v1/chat/threads", () => {
       buildRequest("/api/v1/chat/threads", {
         method: "POST",
         token: signToken(AGENT_ID),
-        body: { recipientId: OWNER_ID, role: "admin" },
+        body: { recipientId: OWNER_ID, role: "owner" },
       }),
     );
     expect(res.status).toBe(403);
@@ -365,7 +365,19 @@ describe("POST /api/v1/chat/threads", () => {
       buildRequest("/api/v1/chat/threads", {
         method: "POST",
         token: signToken(USER_ID),
-        body: { recipientId: "short", role: "admin" },
+        body: { recipientId: "short", role: "owner" },
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("400 when the recipient role is not an allowed chat role", async () => {
+    user.findById.mockReturnValue(buildQuery(tenantUser()));
+    const res = await POST(
+      buildRequest("/api/v1/chat/threads", {
+        method: "POST",
+        token: signToken(USER_ID),
+        body: { recipientId: OWNER_ID, role: "system-admin" },
       }),
     );
     expect(res.status).toBe(400);
@@ -389,7 +401,178 @@ describe("POST /api/v1/chat/threads", () => {
       buildRequest("/api/v1/chat/threads", {
         method: "POST",
         token: signToken(USER_ID),
-        body: { recipientId: makeObjectId("stranger"), role: "caretaker" },
+        body: {
+          recipientId: makeObjectId("stranger"),
+          role: "caretaker",
+          propertyId: PROPERTY_ID,
+        },
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(chatthread.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a property-scoped thread with a custodian agent", async () => {
+    const agentUser = makeUser({
+      _id: CUSTODIAN_ID,
+      role: "custodian",
+      name: "Mary Wanjiku",
+    });
+    user.findById.mockImplementation((id: string) =>
+      buildQuery(id === USER_ID ? tenantUser() : agentUser),
+    );
+    tenant.find.mockReturnValue(
+      buildQuery([
+        makeTenant({ _id: TENANT_ID, propertyId: PROPERTY_ID, ownerId: OWNER_ID, userId: USER_ID }),
+      ]),
+    );
+    property.findById.mockReturnValue(
+      buildQuery(makeProperty({ _id: PROPERTY_ID, ownerId: OWNER_ID })),
+    );
+    managementAssignment.findOne.mockReturnValue(
+      buildQuery(
+        activeAssignment({
+          principalUserId: CUSTODIAN_ID,
+          accessRole: "custodian",
+          propertyId: PROPERTY_ID,
+          permissions: [],
+        }),
+      ),
+    );
+    tenant.findById.mockReturnValue(buildQuery({ _id: TENANT_ID, name: "Amina Otieno" }));
+    chatthread.findById.mockReturnValue(buildQuery(threadRow()));
+    chatthread.create.mockResolvedValue(threadRow());
+    chatmessage.countDocuments.mockResolvedValue(0);
+
+    const res = await POST(
+      buildRequest("/api/v1/chat/threads", {
+        method: "POST",
+        token: signToken(USER_ID),
+        body: { recipientId: CUSTODIAN_ID, role: "custodian", propertyId: PROPERTY_ID },
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(chatthread.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        propertyId: PROPERTY_ID,
+        ownerId: OWNER_ID,
+        agentUserId: CUSTODIAN_ID,
+        agentRole: "custodian",
+      }),
+    );
+  });
+
+  it("creates a thread without a property for a caretaker found by contact", async () => {
+    const agentUser = makeUser({ _id: AGENT_ID, role: "caretaker", name: "John Kiprono" });
+    user.findById.mockImplementation((id: string) =>
+      buildQuery(id === USER_ID ? tenantUser() : agentUser),
+    );
+    tenant.find.mockReturnValue(
+      buildQuery([
+        makeTenant({ _id: TENANT_ID, propertyId: PROPERTY_ID, ownerId: OWNER_ID, userId: USER_ID }),
+      ]),
+    );
+    tenant.findById.mockReturnValue(buildQuery({ _id: TENANT_ID, name: "Amina Otieno" }));
+    chatthread.findById.mockReturnValue(buildQuery(threadRow()));
+    chatthread.create.mockResolvedValue(threadRow());
+    chatmessage.countDocuments.mockResolvedValue(0);
+
+    const res = await POST(
+      buildRequest("/api/v1/chat/threads", {
+        method: "POST",
+        token: signToken(USER_ID),
+        body: { recipientId: AGENT_ID, role: "caretaker" },
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(property.findById).not.toHaveBeenCalled();
+    expect(chatthread.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        propertyId: "",
+        ownerId: AGENT_ID,
+        agentUserId: AGENT_ID,
+        agentRole: "caretaker",
+      }),
+    );
+  });
+
+  it("creates a thread without a property for an admin recipient", async () => {
+    const agentUser = makeUser({ _id: OWNER_ID, role: "admin", name: "Peter Kamau" });
+    user.findById.mockImplementation((id: string) =>
+      buildQuery(id === USER_ID ? tenantUser() : agentUser),
+    );
+    tenant.find.mockReturnValue(
+      buildQuery([
+        makeTenant({ _id: TENANT_ID, propertyId: PROPERTY_ID, ownerId: OWNER_ID, userId: USER_ID }),
+      ]),
+    );
+    tenant.findById.mockReturnValue(buildQuery({ _id: TENANT_ID, name: "Amina Otieno" }));
+    chatthread.findById.mockReturnValue(buildQuery(threadRow()));
+    chatthread.create.mockResolvedValue(threadRow());
+    chatmessage.countDocuments.mockResolvedValue(0);
+
+    const res = await POST(
+      buildRequest("/api/v1/chat/threads", {
+        method: "POST",
+        token: signToken(USER_ID),
+        body: { recipientId: OWNER_ID, role: "owner" },
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(chatthread.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        propertyId: "",
+        ownerId: OWNER_ID,
+        agentUserId: OWNER_ID,
+        agentRole: "owner",
+      }),
+    );
+  });
+
+  it("403 when a no-property recipient does not match the requested staff role", async () => {
+    user.findById.mockImplementation((id: string) =>
+      buildQuery(
+        id === USER_ID ? tenantUser() : makeUser({ _id: CUSTODIAN_ID, role: "caretaker" }),
+      ),
+    );
+    tenant.find.mockReturnValue(
+      buildQuery([
+        makeTenant({ _id: TENANT_ID, propertyId: PROPERTY_ID, ownerId: OWNER_ID, userId: USER_ID }),
+      ]),
+    );
+
+    const res = await POST(
+      buildRequest("/api/v1/chat/threads", {
+        method: "POST",
+        token: signToken(USER_ID),
+        body: { recipientId: CUSTODIAN_ID, role: "custodian" },
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(chatthread.create).not.toHaveBeenCalled();
+  });
+
+  it("403 when a no-property staff contact is inactive", async () => {
+    user.findById.mockImplementation((id: string) =>
+      buildQuery(
+        id === USER_ID
+          ? tenantUser()
+          : makeUser({ _id: AGENT_ID, role: "caretaker", isActive: false }),
+      ),
+    );
+    tenant.find.mockReturnValue(
+      buildQuery([
+        makeTenant({ _id: TENANT_ID, propertyId: PROPERTY_ID, ownerId: OWNER_ID, userId: USER_ID }),
+      ]),
+    );
+
+    const res = await POST(
+      buildRequest("/api/v1/chat/threads", {
+        method: "POST",
+        token: signToken(USER_ID),
+        body: { recipientId: AGENT_ID, role: "caretaker" },
       }),
     );
     expect(res.status).toBe(403);

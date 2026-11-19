@@ -153,7 +153,7 @@ export function useThreadMessages(threadId: string | null, pollMs?: number) {
 export interface ChatContact {
   userId: string;
   name: string;
-  role: "owner" | "caretaker";
+  role: "owner" | "caretaker" | "custodian";
   propertyId: string;
   property: string;
 }
@@ -247,7 +247,7 @@ export function useChatMutations() {
 
   const startThread = async (
     recipientId: string,
-    role: "owner" | "caretaker",
+    role: "owner" | "caretaker" | "custodian",
     propertyId?: string,
   ): Promise<ChatThread> => {
     setPending(true);
@@ -255,7 +255,11 @@ export function useChatMutations() {
       const res = await fetch("/api/v1/chat/threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipientId, role, propertyId }),
+        body: JSON.stringify({
+          recipientId,
+          role,
+          ...(propertyId ? { propertyId } : {}),
+        }),
       });
       const json = await res.json();
       if (!res.ok) {
