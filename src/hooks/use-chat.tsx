@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChatMessage, ChatThread } from "@/types/communications";
+import type { ChatMessage, ChatRequest, ChatThread } from "@/types/communications";
 
 const DEFAULT_POLL_MS = 10_000;
 
@@ -81,6 +81,65 @@ export function useChatThreads(pollMs?: number) {
   const refetch = useCallback(() => setReload((n) => n + 1), []);
 
   return { items, loading, error, refetch, markThreadRead, bumpThread };
+}
+
+/**
+ * Polls the pending cross-property requests for the current recipient every
+ * 10s while the tab is visible. The endpoint defaults to `status=pending`.
+ */
+export function useChatRequests(pollMs?: number) {
+  const intervalMs = pollMs ?? DEFAULT_POLL_MS;
+  const [items, setItems] = useState<ChatRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const inFlightRef = useRef(false);
+  const visibleRef = useRef(typeof document === "undefined" ? true : !document.hidden);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fetchRequests is intentionally left out of the deps (unstable identity); reload bumps it on demand.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onVisibilityChange = () => {
+      visibleRef.current = !document.hidden;
+      if (visibleRef.current) {
+        void fetchRequests();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    const interval = window.setInterval(() => {
+      if (visibleRef.current) void fetchRequests();
+    }, intervalMs);
+    void fetchRequests();
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.clearInterval(interval);
+    };
+  }, [intervalMs, reload]);
+
+  const fetchRequests = useCallback(async () => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    setLoading((prev) => prev || items.length === 0);
+    try {
+      const res = await fetch("/api/v1/chat/requests?limit=100");
+      const json = await res.json();
+      if (res.ok) {
+        setItems(json.data ?? []);
+        setError(null);
+      } else {
+        setError(json.error || "Failed to fetch message requests");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      inFlightRef.current = false;
+      setLoading(false);
+    }
+  }, [items.length]);
+
+  const refetch = useCallback(() => setReload((n) => n + 1), []);
+
+  return { items, loading, error, refetch };
 }
 
 /**
@@ -249,7 +308,7 @@ export function useChatMutations() {
     recipientId: string,
     role: "owner" | "caretaker" | "custodian",
     propertyId?: string,
-  ): Promise<ChatThread> => {
+  ): Promise<ChatThread | ChatRequest> => {
     setPending(true);
     try {
       const res = await fetch("/api/v1/chat/threads", {
@@ -265,11 +324,43 @@ export function useChatMutations() {
       if (!res.ok) {
         throw new Error(json.error || "Failed to start conversation");
       }
-      return json.data as ChatThread;
+      return json.data as ChatThread | ChatRequest;
     } finally {
       setPending(false);
     }
   };
 
   return { sendMessage, openThread, startThread, pending };
+}
+
+/** Recipient approve/decline and requester cancel for cross-property requests. */
+export function useChatRequestMutations() {
+  const [pending, setPending] = useState(false);
+
+  const decide = async (
+    id: string,
+    action: "approve" | "decline" | "cancel",
+  ): Promise<ChatRequest> => {
+    setPending(true);
+    try {
+      const res = await fetch(`/api/v1/chat/requests/${id}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || `Failed to ${action} message request`);
+      }
+      return (json.request ?? json.data) as ChatRequest;
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const approve = (id: string) => decide(id, "approve");
+  const decline = (id: string) => decide(id, "decline");
+  const cancel = (id: string) => decide(id, "cancel");
+
+  return { approve, decline, cancel, pending };
 }

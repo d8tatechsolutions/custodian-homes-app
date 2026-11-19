@@ -4,10 +4,12 @@ import {
   type ChatContact,
   useChatContacts,
   useChatMutations,
+  useChatRequestMutations,
+  useChatRequests,
   useChatThreads,
   useThreadMessages,
 } from "@/hooks/use-chat";
-import type { ChatMessage, ChatThread } from "@/types/communications";
+import type { ChatMessage, ChatRequest, ChatThread } from "@/types/communications";
 
 const thread: ChatThread = {
   _id: "thread-1",
@@ -32,6 +34,17 @@ const message: ChatMessage = {
   sender: "me",
   text: "Anytime.",
   at: "2026-09-02T09:30:00.000Z",
+};
+
+const chatRequest: ChatRequest = {
+  _id: "request-1",
+  requesterId: "tenant-1",
+  recipientId: "owner-1",
+  pairKey: "tenant-1:owner-1",
+  propertyId: "",
+  status: "pending",
+  requesterName: "Grace Wanjiku",
+  createdAt: "2026-09-02T08:00:00.000Z",
 };
 
 function stubFetch(result: { ok?: boolean; json?: unknown; error?: unknown }) {
@@ -94,6 +107,48 @@ describe("useChatThreads", () => {
 
     act(() => result.current.markThreadRead("thread-1"));
     expect(result.current.items[0].unread).toBe(0);
+  });
+});
+
+describe("useChatRequests", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("loads pending requests from GET /api/v1/chat/requests?limit=100", async () => {
+    stubFetch({ json: { data: [chatRequest] } });
+    const { result } = renderHook(() => useChatRequests());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.items).toEqual([chatRequest]);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith("/api/v1/chat/requests?limit=100");
+  });
+
+  it("polls again after the interval", async () => {
+    vi.useFakeTimers();
+    stubFetch({ json: { data: [] } });
+    const { result } = renderHook(() => useChatRequests());
+    await flush();
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    expect(result.current.items).toEqual([]);
+  });
+
+  it("surfaces a non-ok response error", async () => {
+    stubFetch({ ok: false, json: { error: "Forbidden" } });
+    const { result } = renderHook(() => useChatRequests());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("Forbidden");
   });
 });
 
@@ -177,7 +232,7 @@ describe("useChatMutations", () => {
     stubFetch({ json: { data: thread } });
     const { result } = renderHook(() => useChatMutations());
 
-    let out: ChatThread | undefined;
+    let out: ChatThread | ChatRequest | undefined;
     await act(async () => {
       out = await result.current.startThread("owner-1", "owner", "prop-1");
     });
@@ -256,5 +311,44 @@ describe("useChatContacts", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe("Forbidden");
+  });
+});
+
+describe("useChatRequestMutations", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ["approve", "approve"],
+    ["decline", "decline"],
+    ["cancel", "cancel"],
+  ] as const)("%s POSTs to the decision endpoint and returns the request", async (action, path) => {
+    stubFetch({ json: { data: chatRequest, request: chatRequest } });
+    const { result } = renderHook(() => useChatRequestMutations());
+
+    let out: ChatRequest | undefined;
+    await act(async () => {
+      out = await result.current[action]("request-1");
+    });
+
+    expect(out).toEqual(chatRequest);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/v1/chat/requests/request-1/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+  });
+
+  it("throws the API error on a non-ok decision response", async () => {
+    stubFetch({ ok: false, json: { error: "Request cannot be approved" } });
+    const { result } = renderHook(() => useChatRequestMutations());
+
+    let rejection: unknown;
+    await act(async () => {
+      rejection = await result.current.approve("request-1").catch((err: unknown) => err);
+    });
+    expect((rejection as Error).message).toBe("Request cannot be approved");
   });
 });

@@ -51,6 +51,7 @@ describe("GET /api/v1/chat/requests", () => {
     tenant.find.mockReturnValue(
       buildQuery([makeTenant({ _id: makeObjectId("tenant"), userId: REQUESTER })]),
     );
+    user.find.mockReturnValue(buildQuery([]));
     user.findById.mockReturnValue(buildQuery(requester()));
   });
 
@@ -89,6 +90,28 @@ describe("GET /api/v1/chat/requests", () => {
     const body = await json(res);
     expect((body.data as Array<{ _id: string }>)[0]._id).toBe(rows[0]._id);
     expect((body.pagination as { total: number }).total).toBe(1);
+  });
+
+  it("resolves the requester name and property title for display", async () => {
+    user.findById.mockReturnValue(buildQuery(requester()));
+    user.find.mockReturnValue(buildQuery([makeUser({ _id: RECIPIENT, name: "Grace Wanjiku" })]));
+    property.find.mockReturnValue(buildQuery([{ _id: PROPERTY_ID, title: "Sunset Villa" }]));
+    const rows = [
+      makeChatRequest({
+        recipientId: REQUESTER,
+        requesterId: RECIPIENT,
+        propertyId: PROPERTY_ID,
+      }),
+    ];
+    chatrequest.find.mockReturnValue(buildQuery(rows).sort({}).skip(0).limit(10));
+    chatrequest.countDocuments.mockResolvedValue(1);
+
+    const res = await GET(buildRequest("/api/v1/chat/requests", { token: signToken(REQUESTER) }));
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    const row = (body.data as Array<Record<string, unknown>>)[0];
+    expect(row.requesterName).toBe("Grace Wanjiku");
+    expect(row.propertyTitle).toBe("Sunset Villa");
   });
 
   it("honours an explicit status filter", async () => {

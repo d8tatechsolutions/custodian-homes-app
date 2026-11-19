@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { readJsonBody, resolveDashboardActor } from "@/app/api/v1/_helpers";
+import { propertyTitleMap, readJsonBody, resolveDashboardActor } from "@/app/api/v1/_helpers";
 import { serializeRequest, serializeThreadDoc, startConversation } from "@/lib/chat/dm";
 import { CHAT_REQUEST_STATUSES } from "@/lib/domain-enums";
 import { connectToDatabase } from "@/lib/mongoose";
@@ -9,6 +9,7 @@ import { requirePermission } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { chatRequestInput } from "@/lib/schemas";
 import { ChatRequest } from "@/models/ChatRequest";
+import { User } from "@/models/User";
 
 export async function GET(request: NextRequest) {
   const authError = await requirePermission(request, "chat:read-own");
@@ -36,7 +37,22 @@ export async function GET(request: NextRequest) {
       .lean(),
     ChatRequest.countDocuments(filter),
   ]);
-  return NextResponse.json(buildPaginationResult(rows.map(serializeRequest), total, page, limit));
+
+  const requesterIds = [...new Set(rows.map((row) => row.requesterId))];
+  const requesters = requesterIds.length
+    ? await User.find({ _id: { $in: requesterIds } })
+        .select("name")
+        .lean()
+    : [];
+  const requesterNames = new Map(requesters.map((user) => [String(user._id), user.name]));
+  const titles = await propertyTitleMap(rows.map((row) => row.propertyId));
+
+  const data = rows.map((row) => ({
+    ...serializeRequest(row),
+    requesterName: requesterNames.get(row.requesterId) ?? "Someone",
+    propertyTitle: titles.get(row.propertyId) ?? "",
+  }));
+  return NextResponse.json(buildPaginationResult(data, total, page, limit));
 }
 
 export async function POST(request: NextRequest) {
