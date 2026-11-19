@@ -402,14 +402,14 @@ describe("GET /api/v1/invoices", () => {
     });
   });
 
-  it("gates an admin without assignments before any overdue sweep", async () => {
+  it("returns an empty page for an admin without assignments without an overdue sweep", async () => {
     user.findById.mockReturnValue(buildQuery(scopedAdminDoc()));
     managementAssignment.find.mockReturnValue(buildQuery([]));
 
     const res = await GET(
       buildRequest("/api/v1/invoices?status=overdue", { token: signToken(ADMIN_ID) }),
     );
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
     expect(notifyOverdueInvoicesMock).not.toHaveBeenCalled();
   });
 

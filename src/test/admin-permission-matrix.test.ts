@@ -199,7 +199,7 @@ describe("admin permission matrix — amounts assignment dimensions", () => {
     expect(res.status).toBe(403);
   });
 
-  it("suspended (non-active status) assignment → 403", async () => {
+  it("suspended (non-active status) assignment → fail-closed payload, not 403", async () => {
     const token = signInAdmin();
     managementAssignment.find.mockReturnValue(
       buildQuery([assignmentFixture({ status: "suspended" })]),
@@ -209,7 +209,7 @@ describe("admin permission matrix — amounts assignment dimensions", () => {
     const res = await getAmounts(
       buildRequest("/api/v1/amounts", { token, query: { propertyId: PROP_ID } }),
     );
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
   });
 
   it("permission-subset assignment without invoice:read → 403", async () => {
