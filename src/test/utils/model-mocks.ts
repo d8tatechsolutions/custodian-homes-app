@@ -12,6 +12,7 @@ const stubs: Record<
   | "complaint"
   | "chatthread"
   | "chatmessage"
+  | "chatrequest"
   | "announcement"
   | "propertydocument"
   | "propertytype"
@@ -53,6 +54,7 @@ const stubs: Record<
   complaint: createModelStub(),
   chatthread: createModelStub(),
   chatmessage: createModelStub(),
+  chatrequest: createModelStub(),
   announcement: createModelStub(),
   propertydocument: createModelStub(),
   propertytype: createModelStub(),

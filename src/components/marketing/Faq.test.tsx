@@ -7,7 +7,9 @@ describe("Faq", () => {
   it("renders the section heading and all questions", () => {
     render(<Faq />);
     expect(screen.getByRole("heading", { name: /questions, answered/i })).toBeInTheDocument();
-    expect(screen.getAllByRole("group").length + screen.getAllByText(/\?$/).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("group").length + screen.getAllByText(/\?$/).length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("renders questions as details/summary for native accordion", () => {

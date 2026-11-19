@@ -1,3 +1,28 @@
+export interface ReadWatermarkThread {
+  _id?: unknown;
+  tenantLastReadAt?: Date;
+  agentLastReadAt?: Date;
+  reads?: readonly { userId: string; lastReadAt: Date }[];
+}
+
+/**
+ * Effective read watermark for a viewer. DM threads carry a per-user `reads`
+ * entry; threads without one fall back to the legacy two-sided fields. A null
+ * watermark means nothing has been read yet, so every candidate counts.
+ */
+export function readWatermark(
+  thread: ReadWatermarkThread,
+  viewerRole: ThreadViewerRole,
+  userId?: string,
+): Date | null {
+  if (userId) {
+    const own = thread.reads?.find((read) => read.userId === userId);
+    if (own) return own.lastReadAt ?? null;
+  }
+  const legacy = viewerRole === "tenant" ? thread.tenantLastReadAt : thread.agentLastReadAt;
+  return legacy ?? null;
+}
+
 /**
  * Counts unread messages per thread from a single batch of candidate messages.
  * Candidates are other-side messages in the page's threads; each message is
@@ -8,16 +33,16 @@
  * Pure helper so the batched logic is unit-testable without a database.
  */
 export function countUnreadByThread(
-  threads: readonly { _id: unknown; tenantLastReadAt?: Date; agentLastReadAt?: Date }[],
+  threads: readonly ReadWatermarkThread[],
   viewerRole: ThreadViewerRole,
   messages: readonly { threadId: string; createdAt?: Date }[],
+  userId?: string,
 ): Map<string, number> {
   const counts = new Map<string, number>();
   const watermarks = new Map<string, Date | null>();
   for (const thread of threads) {
     const id = String(thread._id);
-    const readAt = viewerRole === "tenant" ? thread.tenantLastReadAt : thread.agentLastReadAt;
-    watermarks.set(id, readAt ?? null);
+    watermarks.set(id, readWatermark(thread, viewerRole, userId));
     counts.set(id, 0);
   }
   for (const message of messages) {

@@ -17,12 +17,16 @@ export type ComplaintPriority = (typeof COMPLAINT_PRIORITIES)[number];
 export const CHAT_AGENT_ROLES = ["owner", "caretaker", "custodian"] as const;
 export type ChatAgentRole = (typeof CHAT_AGENT_ROLES)[number];
 
+export const CHAT_REQUEST_STATUSES = ["pending", "approved", "declined", "cancelled"] as const;
+export type ChatRequestStatus = (typeof CHAT_REQUEST_STATUSES)[number];
+
 export const MESSAGE_SENDER_ROLES = [
   "tenant",
   "owner",
   "caretaker",
   "custodian",
   "admin",
+  "broker",
   "system-admin",
 ] as const;
 export type MessageSenderRole = (typeof MESSAGE_SENDER_ROLES)[number];

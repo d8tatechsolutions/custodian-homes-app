@@ -254,6 +254,15 @@ export async function requirePermission(
 
   if (user.role === "system-admin") return null;
 
+  // Brokers hold no scoped assignments; grant only the chat actions so any
+  // active role can initiate and answer a conversation.
+  if (
+    user.role === "broker" &&
+    (action === "chat:read-own" || action === "chat:send" || action === "chat:manage")
+  ) {
+    return null;
+  }
+
   if (user.role === "caretaker") {
     const privileges = (user.privileges ?? []) as CaretakerPrivilege[];
     if (action === "property:create" && !privileges.includes("create_property")) {

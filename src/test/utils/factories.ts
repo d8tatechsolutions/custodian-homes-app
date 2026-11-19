@@ -430,8 +430,19 @@ export function makeComplaint(overrides: Partial<TestComplaint> = {}): TestCompl
   };
 }
 
+export interface TestChatThreadRead {
+  userId: string;
+  lastReadAt: Date;
+}
+
 export interface TestChatThread {
   _id: string;
+  participants?: string[];
+  pairKey?: string;
+  dmKey?: string;
+  reads?: TestChatThreadRead[];
+  kind?: "dm" | "legacy-property";
+  status?: "active" | "pending";
   tenantId: string;
   propertyId: string;
   ownerId: string;
@@ -459,6 +470,36 @@ export function makeChatThread(overrides: Partial<TestChatThread> = {}): TestCha
     agentLastReadAt: new Date("2026-09-02T09:00:00.000Z"),
     createdAt: new Date("2026-08-01T00:00:00.000Z"),
     updatedAt: new Date("2026-09-02T09:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+export interface TestChatRequest {
+  _id: string;
+  requesterId: string;
+  recipientId: string;
+  pairKey: string;
+  propertyId: string;
+  status: "pending" | "approved" | "declined" | "cancelled";
+  decidedById: string;
+  decidedAt?: Date;
+  threadId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export function makeChatRequest(overrides: Partial<TestChatRequest> = {}): TestChatRequest {
+  return {
+    _id: makeObjectId("chatrequest"),
+    requesterId: makeObjectId("user"),
+    recipientId: makeObjectId("agent"),
+    pairKey: "pair:key",
+    propertyId: "",
+    status: "pending",
+    decidedById: "",
+    threadId: "",
+    createdAt: new Date("2026-11-19T08:00:00.000Z"),
+    updatedAt: new Date("2026-11-19T08:00:00.000Z"),
     ...overrides,
   };
 }

@@ -9,6 +9,11 @@ export const chatThreadInput = z.object({
   propertyId: z.string().regex(hex24).optional(),
 });
 
+export const chatRequestInput = z.object({
+  recipientId: z.string().regex(hex24),
+  propertyId: z.string().regex(hex24).optional(),
+});
+
 export const chatMessageInput = z.object({
   text: z.string().trim().min(1, "Message is required").max(2000),
 });
