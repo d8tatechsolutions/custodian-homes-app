@@ -91,6 +91,14 @@ describe("custodian navigation", () => {
   });
 });
 
+describe("system admin navigation", () => {
+  it("includes Communications", () => {
+    expect(
+      systemAdminNav.some((item) => item.to === "/dashboard/system-admin/communications"),
+    ).toBe(true);
+  });
+});
+
 describe("broker navigation", () => {
   it("includes broker specific sections pointing to /dashboard/broker", () => {
     expect(brokerNav.map((item) => item.to)).toEqual([
@@ -98,6 +106,7 @@ describe("broker navigation", () => {
       "/dashboard/broker/listings",
       "/dashboard/broker/authorizations",
       "/dashboard/broker/prospects",
+      "/dashboard/broker/messages",
       "/dashboard/broker/commissions",
       "/dashboard/broker/profile",
     ]);
@@ -153,11 +162,12 @@ describe("nav grouping", () => {
     ]);
   });
 
-  it("groups broker commissions under finance and profile under administration", () => {
+  it("groups broker messages under operations, commissions under finance and profile under administration", () => {
     expect(groupNavItems(brokerNav).map((g) => [g.id, g.items.length])).toEqual([
       ["overview", 1],
       ["properties", 1],
       ["people", 2],
+      ["operations", 1],
       ["finance", 1],
       ["administration", 1],
     ]);

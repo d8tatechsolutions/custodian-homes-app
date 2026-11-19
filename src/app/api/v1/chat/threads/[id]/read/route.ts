@@ -1,31 +1,12 @@
 import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { type DashboardActor, resolveDashboardActor } from "@/app/api/v1/_helpers";
+import { resolveDashboardActor } from "@/app/api/v1/_helpers";
+import { isParticipant } from "@/lib/chat/participants";
 import { connectToDatabase } from "@/lib/mongoose";
 import { requirePermission } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { ChatThread } from "@/models/ChatThread";
-
-type ThreadRow = { tenantId: string; ownerId: string; agentUserId: string; propertyId: string };
-
-function isParticipant(thread: ThreadRow, actor: DashboardActor): boolean {
-  if (actor.role === "system-admin") return true;
-  if (actor.role === "admin") {
-    return (
-      actor.assignedPropertyIds.includes(thread.propertyId) ||
-      actor.assignedTenantIds.includes(thread.tenantId)
-    );
-  }
-  if (actor.role === "tenant") return actor.tenantIds.includes(thread.tenantId);
-  if (actor.role === "custodian") {
-    return (
-      actor.propertyScopeIds.includes(thread.propertyId) ||
-      actor.assignedTenantIds.includes(thread.tenantId)
-    );
-  }
-  return thread.agentUserId === actor.userId; // caretaker
-}
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const limit = await rateLimit(request, { windowMs: 60_000, limit: 20 });
@@ -53,7 +34,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   const now = new Date();
   const readAtSet = actor.role === "tenant" ? { tenantLastReadAt: now } : { agentLastReadAt: now };
-  await ChatThread.updateOne({ _id: id }, { $set: readAtSet });
+  const reads = [
+    ...(thread.reads ?? []).filter((read: { userId: string }) => read.userId !== actor.userId),
+    { userId: actor.userId, lastReadAt: now },
+  ];
+  await ChatThread.updateOne({ _id: id }, { $set: { ...readAtSet, reads } });
 
   console.info(`[chat] mark-read actor=${actor.userId} role=${actor.role} thread=${id}`);
 

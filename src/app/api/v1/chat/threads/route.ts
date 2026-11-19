@@ -1,13 +1,14 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { propertyTitleMap, readJsonBody, resolveDashboardActor } from "@/app/api/v1/_helpers";
 import {
-  type DashboardActor,
-  isDuplicateKeyError,
-  propertyTitleMap,
-  readJsonBody,
-  resolveDashboardActor,
-} from "@/app/api/v1/_helpers";
-import { countUnreadByThread, serializeThread, type ThreadEnrichment } from "@/lib/chat";
+  countUnreadByThread,
+  readWatermark,
+  serializeThread,
+  type ThreadEnrichment,
+} from "@/lib/chat";
+import { serializeRequest, serializeThreadDoc, startConversation } from "@/lib/chat/dm";
+import { buildThreadFilter } from "@/lib/chat/participants";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
 import { requirePermission } from "@/lib/permissions";
@@ -15,8 +16,6 @@ import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { chatThreadInput } from "@/lib/schemas";
 import { ChatMessage } from "@/models/ChatMessage";
 import { ChatThread } from "@/models/ChatThread";
-import { ManagementAssignment } from "@/models/ManagementAssignment";
-import { Property } from "@/models/Property";
 import { Tenant } from "@/models/Tenant";
 import { User } from "@/models/User";
 
@@ -34,39 +33,7 @@ export async function GET(request: NextRequest) {
   const actor = await resolveDashboardActor(request, "chat:read-own");
   if (actor instanceof NextResponse) return actor;
 
-  const filter: Record<string, unknown> = {};
-  if (actor.role === "tenant") {
-    if (actor.tenantIds.length === 0) {
-      return NextResponse.json(buildPaginationResult([], 0, page, limit));
-    }
-    filter.tenantId = { $in: actor.tenantIds };
-  } else if (actor.role === "caretaker") {
-    filter.agentUserId = actor.userId;
-  } else if (actor.role === "custodian") {
-    const scopes: Record<string, unknown>[] = [];
-    if (actor.propertyScopeIds.length > 0) {
-      scopes.push({ propertyId: { $in: actor.propertyScopeIds } });
-    }
-    if (actor.assignedTenantIds.length > 0) {
-      scopes.push({ tenantId: { $in: actor.assignedTenantIds } });
-    }
-    if (scopes.length === 0) {
-      return NextResponse.json(buildPaginationResult([], 0, page, limit));
-    }
-    filter.$or = scopes;
-  } else if (actor.role === "admin") {
-    const scopes: Record<string, unknown>[] = [];
-    if (actor.propertyScopeIds.length > 0) {
-      scopes.push({ propertyId: { $in: actor.propertyScopeIds } });
-    }
-    if (actor.assignedTenantIds.length > 0) {
-      scopes.push({ tenantId: { $in: actor.assignedTenantIds } });
-    }
-    if (scopes.length === 0) {
-      return NextResponse.json(buildPaginationResult([], 0, page, limit));
-    }
-    filter.$or = scopes;
-  }
+  const filter = buildThreadFilter(actor);
 
   const [threads, total] = await Promise.all([
     ChatThread.find(filter).sort({ lastMessageAt: -1 }).skip(skip).limit(limit).lean(),
@@ -95,7 +62,7 @@ export async function GET(request: NextRequest) {
   // per-thread counting then applies each thread's own watermark.
   let oldestReadAt: Date | null = null;
   for (const thread of threads) {
-    const readAt = actor.role === "tenant" ? thread.tenantLastReadAt : thread.agentLastReadAt;
+    const readAt = readWatermark(thread, actor.role, actor.userId);
     if (readAt && (oldestReadAt === null || readAt < oldestReadAt)) oldestReadAt = readAt;
   }
   const unreadFilter: Record<string, unknown> = {
@@ -106,7 +73,7 @@ export async function GET(request: NextRequest) {
   const candidateMessages = threads.length
     ? await ChatMessage.find(unreadFilter).select("threadId createdAt").lean()
     : [];
-  const unreadByThread = countUnreadByThread(threads, actor.role, candidateMessages);
+  const unreadByThread = countUnreadByThread(threads, actor.role, candidateMessages, actor.userId);
 
   const data: ReturnType<typeof serializeThread>[] = [];
   for (const thread of threads) {
@@ -144,142 +111,33 @@ export async function POST(request: NextRequest) {
   await connectToDatabase();
   const actor = await resolveDashboardActor(request, "chat:send");
   if (actor instanceof NextResponse) return actor;
-  if (actor.role !== "tenant") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const { recipientId, role, propertyId } = parsed.data;
+  if (recipientId === actor.userId) {
+    return NextResponse.json({ error: "Cannot message yourself" }, { status: 400 });
   }
 
-  const rows = await Tenant.find({ userId: actor.userId }).select("_id propertyId ownerId").lean();
-  if (rows.length === 0) {
-    return NextResponse.json(
-      { error: "No active tenancy found. Contact your landlord to be linked to a property." },
-      { status: 403 },
-    );
+  const result = await startConversation({
+    actorUserId: actor.userId,
+    recipientId,
+    propertyId,
+    preferredRole: role,
+    tenantId: actor.tenantIds[0] ?? "",
+  });
+  if (!result) {
+    return NextResponse.json({ error: "Recipient not found" }, { status: 404 });
   }
 
-  const propertyIds = [...new Set(rows.map((row) => row.propertyId))];
-  let propertyId = parsed.data.propertyId;
-  let row: (typeof rows)[number] | undefined;
-  if (propertyIds.length === 1) {
-    propertyId = propertyIds[0];
-    row = rows.find((candidate) => candidate.propertyId === propertyId);
-  } else {
-    if (!propertyId) {
-      return NextResponse.json(
-        { error: "Property is required — your account maps to multiple properties" },
-        { status: 400 },
-      );
-    }
-    row = rows.find((candidate) => candidate.propertyId === propertyId);
-    if (!row) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-  }
-  if (!propertyId || !row) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const property = await Property.findById(propertyId).select("ownerId").lean();
-  if (!property) {
-    return NextResponse.json({ error: "Property not found" }, { status: 404 });
-  }
-  const recipientId = parsed.data.recipientId;
-  let agentMatchesRole = parsed.data.role === "owner" && property.ownerId === recipientId;
-  if (!agentMatchesRole && parsed.data.role === "caretaker") {
-    const caretakerAssignment = await ManagementAssignment.findOne({
-      principalUserId: recipientId,
-      propertyId,
-      accessRole: "caretaker",
-      status: "active",
-    }).lean();
-    agentMatchesRole = Boolean(caretakerAssignment);
-  }
-  if (!agentMatchesRole) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-  const agent = await User.findById(recipientId).select("role").lean();
-  const roleMatches =
-    parsed.data.role === "owner" ? agent?.role === "admin" : agent?.role === "caretaker";
-  if (!agent || !roleMatches) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const now = new Date();
-  try {
-    const thread = await ChatThread.create({
-      tenantId: String(row._id),
-      propertyId,
-      ownerId: row.ownerId,
-      agentUserId: recipientId,
-      agentRole: parsed.data.role,
-      lastMessageAt: now,
-      lastMessageText: "",
-      tenantLastReadAt: now,
-      agentLastReadAt: now,
-    });
-    const data = await buildThreadResponse(
-      String(thread._id),
-      String(row._id),
-      recipientId,
-      propertyId,
-      actor,
-    );
+  if (result.kind === "thread") {
+    const thread = serializeThreadDoc(result.thread);
     console.info(
       `[chat] start-thread actor=${actor.userId} role=${actor.role} thread=${String(thread._id)}`,
     );
-    return NextResponse.json({ data }, { status: 201 });
-  } catch (error) {
-    if (!isDuplicateKeyError(error)) throw error;
-
-    const existing = await ChatThread.findOne({
-      tenantId: String(row._id),
-      propertyId,
-      agentUserId: recipientId,
-    }).lean();
-    if (!existing) {
-      return NextResponse.json({ error: "Thread not found" }, { status: 404 });
-    }
-    const data = await buildThreadResponse(
-      String(existing._id),
-      String(existing.tenantId),
-      existing.agentUserId,
-      existing.propertyId,
-      actor,
-    );
-    return NextResponse.json({ data }, { status: 200 });
+    return NextResponse.json({ data: thread, thread }, { status: 201 });
   }
-}
-
-async function buildThreadResponse(
-  threadId: string,
-  tenantId: string,
-  agentUserId: string,
-  propertyId: string,
-  actor: DashboardActor,
-) {
-  const thread = await ChatThread.findById(threadId).lean();
-  if (!thread) {
-    return null;
-  }
-  const [agentUser, tenantRow] = await Promise.all([
-    User.findById(agentUserId).select("name").lean(),
-    Tenant.findById(tenantId).select("name").lean(),
-  ]);
-  const titles = await propertyTitleMap([propertyId]);
-  const readAt = actor.role === "tenant" ? thread.tenantLastReadAt : thread.agentLastReadAt;
-  const unreadFilter: Record<string, unknown> = {
-    threadId,
-    senderUserId: { $ne: actor.userId },
-  };
-  if (readAt) unreadFilter.createdAt = { $gt: readAt };
-  const unread = await ChatMessage.countDocuments(unreadFilter);
-  return serializeThread(
-    thread,
-    {
-      agentName: agentUser?.name ?? "Property team",
-      tenantName: tenantRow?.name ?? "Tenant",
-      propertyTitle: titles.get(propertyId) ?? "",
-      unread,
-    },
-    actor.role,
+  const chatRequest = serializeRequest(result.request);
+  return NextResponse.json(
+    { data: chatRequest, request: chatRequest },
+    { status: result.deduped ? 200 : 201 },
   );
 }

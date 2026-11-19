@@ -21,7 +21,8 @@
     "reconcile:attributions": "tsx scripts/reconcile-attributions.ts",
     "reconcile:commissions": "tsx scripts/reconcile-commissions.ts",
     "backfill:commissions": "tsx scripts/backfill-commissions.ts",
-    "backfill:tasks": "tsx scripts/backfill-task-permissions.ts"
+    "backfill:tasks": "tsx scripts/backfill-task-permissions.ts",
+    "backfill:chat": "tsx scripts/backfill-chat-approval-state.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

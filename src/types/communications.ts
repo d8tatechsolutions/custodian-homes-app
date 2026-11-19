@@ -68,6 +68,9 @@ export interface ChatMessage {
   createdAt?: string;
 }
 
+/** Lifecycle of an approved DM thread (absent on legacy in-property threads). */
+export type ChatThreadStatus = "active" | "approved" | "pending" | "declined" | "cancelled";
+
 /** Serialized chat thread list item (summary fields only; no message history). */
 export interface ChatThread {
   _id: string;
@@ -82,6 +85,28 @@ export interface ChatThread {
   lastAt: string;
   lastMessageText: string;
   unread: number;
+  status?: ChatThreadStatus;
+  requestId?: string;
+}
+
+/**
+ * Serialized cross-property conversation request from `/api/v1/chat/requests`.
+ * `requesterName`/`propertyTitle` are display fields resolved by the API.
+ */
+export interface ChatRequest {
+  _id: string;
+  requesterId: string;
+  recipientId: string;
+  pairKey: string;
+  propertyId: string;
+  status: "pending" | "approved" | "declined" | "cancelled";
+  decidedById?: string;
+  decidedAt?: string;
+  threadId?: string;
+  requesterName?: string;
+  propertyTitle?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 /** Serialized announcement from `/api/v1/announcements`. */

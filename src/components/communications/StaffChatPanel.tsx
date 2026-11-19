@@ -2,7 +2,7 @@
 
 import { ChatInbox } from "@/components/chat/ChatInbox";
 
-/** Staff chat inbox — rendered inside the owner/caretaker Communications tabs. */
+/** Staff chat inbox — rendered inside the Communications tabs of every staff role. */
 export function StaffChatPanel() {
-  return <ChatInbox emptyHint="Messages from tenants appear here." />;
+  return <ChatInbox canStartConversation emptyHint="Messages from tenants appear here." />;
 }

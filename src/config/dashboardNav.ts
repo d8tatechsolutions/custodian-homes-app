@@ -129,7 +129,9 @@ const custodianSections = baseSections.filter((s) =>
   ].includes(s.slug),
 );
 const systemAdminSections = baseSections.filter((s) =>
-  ["", "/portfolio", "/tenants", "/notifications", "/accounting"].includes(s.slug),
+  ["", "/portfolio", "/tenants", "/communications", "/notifications", "/accounting"].includes(
+    s.slug,
+  ),
 );
 
 const brokerSections = [
@@ -137,6 +139,7 @@ const brokerSections = [
   { slug: "/listings", label: "Market Listings", icon: Building2, group: "properties" },
   { slug: "/authorizations", label: "Authorizations", icon: UserCog, group: "people" },
   { slug: "/prospects", label: "Prospects", icon: Users, group: "people" },
+  { slug: "/messages", label: "Messages", icon: MessagesSquare, group: "operations" },
   { slug: "/commissions", label: "Commissions", icon: Calculator, group: "finance" },
   { slug: "/profile", label: "Broker Profile", icon: Settings, group: "administration" },
 ] satisfies readonly Section[];

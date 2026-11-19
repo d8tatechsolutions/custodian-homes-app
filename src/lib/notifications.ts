@@ -49,6 +49,7 @@ function resolveDedupeKey(type: NotificationType, data: Record<string, unknown>)
     data.announcementId ??
     data.messageId ??
     data.threadId ??
+    data.chatRequestId ??
     "";
   return eventId === "" ? "" : `${type}:${String(eventId)}`;
 }
@@ -740,6 +741,66 @@ export async function notifyMessageReply(
     });
   } catch (_error) {
     console.warn("[notifications] notifyMessageReply failed");
+    return false;
+  }
+}
+
+export interface ChatRequestLike {
+  _id: unknown;
+  requesterId: string;
+  recipientId: string;
+  propertyId?: string;
+  status?: string;
+  decidedById?: string;
+}
+
+/** The recipient learns a cross-property conversation is awaiting approval. */
+export async function notifyChatRequest(
+  request: ChatRequestLike,
+  recipientUserId: string,
+  link = "/dashboard/tenant/messages",
+): Promise<boolean> {
+  try {
+    if (!recipientUserId || recipientUserId === request.requesterId) return true;
+    const chatRequestId = String(request._id);
+    return notifyUser(recipientUserId, {
+      type: "chat:request",
+      title: "New message request",
+      body: "Someone would like to start a conversation with you. Review and approve to enable messaging.",
+      // Keyed per request and status so a re-opened request notifies again.
+      data: { chatRequestId, status: "pending", eventId: `${chatRequestId}:pending` },
+      link,
+      channels: ["in-app"],
+    });
+  } catch (_error) {
+    console.warn("[notifications] notifyChatRequest failed");
+    return false;
+  }
+}
+
+/** The requester learns the outcome — never the decider themselves. */
+export async function notifyChatRequestDecided(
+  request: ChatRequestLike,
+  requesterUserId: string,
+  approved: boolean,
+  link = "/dashboard/tenant/messages",
+): Promise<boolean> {
+  try {
+    if (!requesterUserId || requesterUserId === (request.decidedById ?? "")) return true;
+    const chatRequestId = String(request._id);
+    const status = approved ? "approved" : "declined";
+    return notifyUser(requesterUserId, {
+      type: "chat:request-decided",
+      title: approved ? "Message request approved" : "Message request declined",
+      body: approved
+        ? "Your message request was approved. You can now send messages."
+        : "Your message request was declined.",
+      data: { chatRequestId, status, eventId: `${chatRequestId}:${status}` },
+      link,
+      channels: ["in-app"],
+    });
+  } catch (_error) {
+    console.warn("[notifications] notifyChatRequestDecided failed");
     return false;
   }
 }

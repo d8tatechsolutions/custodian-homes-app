@@ -30,6 +30,8 @@ const TYPE_LABELS: Record<AppNotification["type"], string> = {
   "complaint:created": "Complaint received",
   "complaint:status-changed": "Complaint updated",
   "chat:reply": "New message",
+  "chat:request": "Message request",
+  "chat:request-decided": "Message request decided",
   announcement: "Announcement",
   "move-request:created": "Move request",
   "move-request:decided": "Move request decided",
@@ -47,8 +49,11 @@ const typeVariant = (type: AppNotification["type"]): BadgePropsVariant => {
     case "complaint:status-changed":
       return "outline";
     case "chat:reply":
+    case "chat:request":
     case "announcement":
       return "secondary";
+    case "chat:request-decided":
+      return "outline";
     default:
       return "default";
   }

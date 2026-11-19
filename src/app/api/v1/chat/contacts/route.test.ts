@@ -16,7 +16,7 @@ vi.mock("@/models/ManagementAssignment", () => ({
 
 import { GET } from "@/app/api/v1/chat/contacts/route";
 
-const { user, tenant, managementAssignment } = getModelStubs();
+const { user, tenant, property, managementAssignment } = getModelStubs();
 
 const USER_ID = makeObjectId("user");
 const OWNER_ID = makeObjectId("admin");
@@ -51,5 +51,40 @@ describe("GET /api/v1/chat/contacts", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: unknown[] };
     expect(body.data).toEqual([]);
+  });
+
+  it("includes custodians alongside owners and caretakers", async () => {
+    const propertyId = makeObjectId("prop");
+    const caretakerId = makeObjectId("care");
+    const custodianId = makeObjectId("cust");
+    user.findById.mockReturnValue(buildQuery(tenantUser()));
+    tenant.find.mockReturnValue(buildQuery([{ propertyId }]));
+    property.find.mockReturnValue(
+      buildQuery([{ _id: propertyId, title: "Sunlit Studio", ownerId: OWNER_ID }]),
+    );
+    managementAssignment.find.mockReturnValue(
+      buildQuery([
+        { propertyId, principalUserId: caretakerId, accessRole: "caretaker", status: "active" },
+        { propertyId, principalUserId: custodianId, accessRole: "custodian", status: "active" },
+      ]),
+    );
+    user.find.mockReturnValue(
+      buildQuery([
+        makeUser({ _id: OWNER_ID, role: "admin", name: "Peter Kamau" }),
+        makeUser({ _id: caretakerId, role: "caretaker", name: "John Kiprono" }),
+        makeUser({ _id: custodianId, role: "custodian", name: "Mary Wanjiku" }),
+      ]),
+    );
+
+    const res = await GET(buildRequest("/api/v1/chat/contacts", { token: signToken(USER_ID) }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: Array<Record<string, unknown>> };
+    expect(body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: OWNER_ID, role: "owner" }),
+        expect.objectContaining({ userId: caretakerId, role: "caretaker" }),
+        expect.objectContaining({ userId: custodianId, role: "custodian" }),
+      ]),
+    );
   });
 });

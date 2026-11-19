@@ -11,15 +11,15 @@ import { User } from "@/models/User";
 export interface ChatContact {
   userId: string;
   name: string;
-  role: "owner" | "caretaker";
+  role: "owner" | "caretaker" | "custodian";
   propertyId: string;
   property: string;
 }
 
 /**
- * Lists the owner and caretakers a tenant can message, one entry per
- * property they are bound to. Starting a thread only needs `userId`, `role`
- * and `propertyId`, so this is deliberately small.
+ * Lists the owner, caretakers and custodians a tenant can message, one entry
+ * per property they are bound to. Starting a thread only needs `userId`,
+ * `role` and `propertyId`, so this is deliberately small.
  */
 export async function GET(request: NextRequest) {
   const authError = await requirePermission(request, "chat:read-own");
@@ -45,7 +45,11 @@ export async function GET(request: NextRequest) {
   const userIds = [
     ...new Set(
       properties
-        .flatMap((p) => [p.ownerId, ...(staffMap.get(String(p._id))?.caretakerIds ?? [])])
+        .flatMap((p) => [
+          p.ownerId,
+          ...(staffMap.get(String(p._id))?.caretakerIds ?? []),
+          ...(staffMap.get(String(p._id))?.custodianIds ?? []),
+        ])
         .filter(Boolean),
     ),
   ];
@@ -75,6 +79,18 @@ export async function GET(request: NextRequest) {
           userId: String(caretakerId),
           name: caretaker.name,
           role: "caretaker",
+          propertyId,
+          property,
+        });
+      }
+    }
+    for (const custodianId of staffMap.get(propertyId)?.custodianIds ?? []) {
+      const custodian = usersById.get(String(custodianId));
+      if (custodian?.role === "custodian") {
+        contacts.push({
+          userId: String(custodianId),
+          name: custodian.name,
+          role: "custodian",
           propertyId,
           property,
         });

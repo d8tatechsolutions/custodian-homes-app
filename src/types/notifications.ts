@@ -5,6 +5,8 @@ export type NotificationType =
   | "complaint:created"
   | "complaint:status-changed"
   | "chat:reply"
+  | "chat:request"
+  | "chat:request-decided"
   | "announcement"
   | "move-request:created"
   | "move-request:decided"

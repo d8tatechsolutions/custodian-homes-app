@@ -270,11 +270,94 @@ describe("POST /api/v1/chat/threads/[id]/messages", () => {
     );
   });
 
-  it("403 when a caretaker without send_messages posts", async () => {
-    user.findById
-      .mockReturnValueOnce(buildQuery(caretakerUser([])))
-      .mockReturnValueOnce(buildQuery(caretakerUser([])))
-      .mockReturnValueOnce(buildQuery(caretakerUser([])));
+  it("lets a tenant message a custodian thread", async () => {
+    user.findById.mockReturnValue(buildQuery(tenantUser()));
+    tenant.find.mockReturnValue(tenantWithRows());
+    chatthread.findById.mockReturnValue(
+      buildQuery(
+        makeChatThread({
+          _id: THREAD_ID,
+          tenantId: TENANT_ID,
+          propertyId: "",
+          agentUserId: CUSTODIAN_ID,
+          agentRole: "custodian",
+        }),
+      ),
+    );
+    const created = makeChatMessage({
+      _id: MESSAGE_ID,
+      threadId: THREAD_ID,
+      senderUserId: USER_ID,
+      senderRole: "tenant",
+      text: "Hello, I'd like to inquire about a unit.",
+    });
+    chatmessage.create.mockResolvedValue(created);
+    chatthread.updateOne.mockResolvedValue({ acknowledged: true });
+
+    const res = await POST(
+      buildRequest(`/api/v1/chat/threads/${THREAD_ID}/messages`, {
+        method: "POST",
+        token: signToken(USER_ID),
+        body: { text: "Hello, I'd like to inquire about a unit." },
+      }),
+      withParams(THREAD_ID),
+    );
+    expect(res.status).toBe(201);
+    expect(chatmessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({ senderRole: "tenant", senderUserId: USER_ID }),
+    );
+    expect(notifyMessageReplyMock).toHaveBeenCalledWith(
+      created,
+      CUSTODIAN_ID,
+      "/dashboard/caretaker/communications",
+    );
+  });
+
+  it("lets a caretaker post with chat:send but without send_messages", async () => {
+    user.findById.mockReturnValue(buildQuery(caretakerUser([])));
+    managementAssignment.find.mockReturnValue(
+      buildQuery([
+        activeAssignment({
+          principalUserId: AGENT_ID,
+          accessRole: "caretaker",
+          propertyId: PROPERTY_ID,
+          permissions: ["chat:read-own", "chat:send"],
+        }),
+      ]),
+    );
+    chatthread.findById.mockReturnValue(buildQuery(threadRow()));
+    tenant.findById.mockReturnValue(buildQuery({ _id: TENANT_ID, userId: USER_ID }));
+    const created = makeChatMessage({
+      _id: MESSAGE_ID,
+      threadId: THREAD_ID,
+      senderUserId: AGENT_ID,
+      senderRole: "caretaker",
+      text: "Hello",
+    });
+    chatmessage.create.mockResolvedValue(created);
+    chatthread.updateOne.mockResolvedValue({ acknowledged: true });
+
+    const res = await POST(
+      buildRequest(`/api/v1/chat/threads/${THREAD_ID}/messages`, {
+        method: "POST",
+        token: signToken(AGENT_ID),
+        body: { text: "Hello" },
+      }),
+      withParams(THREAD_ID),
+    );
+    expect(res.status).toBe(201);
+    expect(chatmessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({ senderRole: "caretaker", text: "Hello" }),
+    );
+    expect(notifyMessageReplyMock).toHaveBeenCalledWith(
+      created,
+      USER_ID,
+      "/dashboard/tenant/messages",
+    );
+  });
+
+  it("403 when a caretaker lacks chat:send", async () => {
+    user.findById.mockReturnValue(buildQuery(caretakerUser([])));
     property.find.mockReturnValue(buildQuery([]));
     chatthread.findById.mockReturnValue(buildQuery(threadRow()));
     const res = await POST(
@@ -308,7 +391,7 @@ describe("POST /api/v1/chat/threads/[id]/messages", () => {
       _id: MESSAGE_ID,
       threadId: THREAD_ID,
       senderUserId: OWNER_ID,
-      senderRole: "admin" as any,
+      senderRole: "admin",
       text: "Noted",
     });
     chatmessage.create.mockResolvedValue(created);
@@ -370,6 +453,83 @@ describe("POST /api/v1/chat/threads/[id]/messages", () => {
       created,
       USER_ID,
       "/dashboard/tenant/messages",
+    );
+  });
+
+  it("403 when the thread is still pending approval", async () => {
+    user.findById.mockReturnValue(buildQuery(tenantUser()));
+    tenant.find.mockReturnValue(tenantWithRows());
+    chatthread.findById.mockReturnValue(
+      buildQuery(makeChatThread({ ...threadRow(), status: "pending" })),
+    );
+
+    const res = await POST(
+      buildRequest(`/api/v1/chat/threads/${THREAD_ID}/messages`, {
+        method: "POST",
+        token: signToken(USER_ID),
+        body: { text: "Hello" },
+      }),
+      withParams(THREAD_ID),
+    );
+    expect(res.status).toBe(403);
+    expect(chatmessage.create).not.toHaveBeenCalled();
+  });
+
+  it("notifies the other DM participant using their role link", async () => {
+    user.findById.mockImplementation((id: string) =>
+      buildQuery(
+        id === USER_ID
+          ? tenantUser()
+          : makeUser({ _id: AGENT_ID, role: "custodian", isActive: true }),
+      ),
+    );
+    tenant.find.mockReturnValue(tenantWithRows());
+    chatthread.findById.mockReturnValue(
+      buildQuery(
+        makeChatThread({
+          _id: THREAD_ID,
+          participants: [USER_ID, AGENT_ID],
+          reads: [
+            { userId: USER_ID, lastReadAt: new Date("2026-09-02T08:00:00.000Z") },
+            { userId: AGENT_ID, lastReadAt: new Date("2026-09-02T08:00:00.000Z") },
+          ],
+          kind: "dm",
+          status: "active",
+          propertyId: "",
+          tenantId: "",
+        }),
+      ),
+    );
+    const created = makeChatMessage({
+      _id: MESSAGE_ID,
+      threadId: THREAD_ID,
+      senderUserId: USER_ID,
+      senderRole: "tenant",
+      text: "Hello",
+    });
+    chatmessage.create.mockResolvedValue(created);
+    chatthread.updateOne.mockResolvedValue({ acknowledged: true });
+
+    const res = await POST(
+      buildRequest(`/api/v1/chat/threads/${THREAD_ID}/messages`, {
+        method: "POST",
+        token: signToken(USER_ID),
+        body: { text: "Hello" },
+      }),
+      withParams(THREAD_ID),
+    );
+    expect(res.status).toBe(201);
+    expect(notifyMessageReplyMock).toHaveBeenCalledWith(
+      created,
+      AGENT_ID,
+      "/dashboard/custodian/communications",
+    );
+    const update = chatthread.updateOne.mock.calls[0][1] as {
+      $set: { reads: Array<{ userId: string }> };
+    };
+    expect(update.$set.reads).toHaveLength(2);
+    expect(update.$set.reads.map((read) => read.userId)).toEqual(
+      expect.arrayContaining([USER_ID, AGENT_ID]),
     );
   });
 });

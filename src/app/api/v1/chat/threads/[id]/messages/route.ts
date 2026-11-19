@@ -1,8 +1,10 @@
 import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { type DashboardActor, readJsonBody, resolveDashboardActor } from "@/app/api/v1/_helpers";
+import { readJsonBody, resolveDashboardActor } from "@/app/api/v1/_helpers";
 import { serializeMessage } from "@/lib/chat";
+import { chatLinkForRole } from "@/lib/chat/dm";
+import { isParticipant, isThreadActive } from "@/lib/chat/participants";
 import { connectToDatabase } from "@/lib/mongoose";
 import { notifyMessageReply } from "@/lib/notifications";
 import { buildPaginationResult } from "@/lib/pagination";
@@ -13,26 +15,6 @@ import { ChatMessage } from "@/models/ChatMessage";
 import { ChatThread } from "@/models/ChatThread";
 import { Tenant } from "@/models/Tenant";
 import { User } from "@/models/User";
-
-type ThreadRow = { tenantId: string; ownerId: string; agentUserId: string; propertyId: string };
-
-function isParticipant(thread: ThreadRow, actor: DashboardActor): boolean {
-  if (actor.role === "system-admin") return true;
-  if (actor.role === "admin") {
-    return (
-      actor.assignedPropertyIds.includes(thread.propertyId) ||
-      actor.assignedTenantIds.includes(thread.tenantId)
-    );
-  }
-  if (actor.role === "tenant") return actor.tenantIds.includes(thread.tenantId);
-  if (actor.role === "custodian") {
-    return (
-      actor.propertyScopeIds.includes(thread.propertyId) ||
-      actor.assignedTenantIds.includes(thread.tenantId)
-    );
-  }
-  return thread.agentUserId === actor.userId; // caretaker
-}
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
@@ -100,12 +82,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (!thread || !isParticipant(thread, actor)) {
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
   }
-
-  if (actor.role === "caretaker") {
-    const user = await User.findById(actor.userId).select("privileges").lean();
-    if (!user?.privileges?.includes("send_messages")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+  if (!isThreadActive(thread)) {
+    return NextResponse.json({ error: "Thread is not active" }, { status: 403 });
   }
 
   const message = await ChatMessage.create({
@@ -117,17 +95,25 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   const now = new Date();
   const readAtSet = actor.role === "tenant" ? { tenantLastReadAt: now } : { agentLastReadAt: now };
+  const reads = [
+    ...(thread.reads ?? []).filter((read: { userId: string }) => read.userId !== actor.userId),
+    { userId: actor.userId, lastReadAt: now },
+  ];
   await ChatThread.updateOne(
     { _id: id },
-    { $set: { lastMessageAt: now, lastMessageText: parsed.data.text, ...readAtSet } },
+    { $set: { lastMessageAt: now, lastMessageText: parsed.data.text, ...readAtSet, reads } },
   );
 
-  // Two-sided thread: a tenant message reaches the agent, anything else
-  // reaches the tenant. The link follows the recipient's side of the thread.
   let recipientUserId = "";
   let link = "/dashboard/tenant/messages";
-  if (actor.role === "tenant") {
-    recipientUserId = thread.agentUserId;
+  if ((thread.participants?.length ?? 0) > 0 && thread.kind !== "legacy-property") {
+    recipientUserId = thread.participants?.find((userId: string) => userId !== actor.userId) ?? "";
+    const other = recipientUserId
+      ? await User.findById(recipientUserId).select("role").lean()
+      : null;
+    link = chatLinkForRole(String(other?.role ?? ""));
+  } else if (actor.role === "tenant") {
+    recipientUserId = thread.agentUserId ?? "";
     link =
       thread.agentRole === "owner"
         ? "/dashboard/admin/communications"

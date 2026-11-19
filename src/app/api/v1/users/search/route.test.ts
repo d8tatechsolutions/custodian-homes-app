@@ -55,22 +55,65 @@ describe("GET /api/v1/users/search", () => {
     expect(res.status).toBe(400);
   });
 
-  it("403 for a tenant user", async () => {
+  it("403 for a tenant user in a privileged link flow", async () => {
     user.findById.mockReturnValue(buildQuery(makeUser({ _id: TENANT_USER_ID, role: "tenant" })));
     const res = await GET(
-      buildRequest("/api/v1/users/search?email=a@b.co", {
+      buildRequest("/api/v1/users/search?email=a@b.co&role=caretaker", {
         token: signToken(TENANT_USER_ID),
       }),
     );
     expect(res.status).toBe(403);
   });
 
-  it("403 for a caretaker without manage_tenants", async () => {
+  it("403 for a caretaker without manage_tenants in a privileged link flow", async () => {
     user.findById.mockReturnValue(buildQuery(caretakerDoc([])));
     const res = await GET(
-      buildRequest("/api/v1/users/search?email=a@b.co", { token: signToken(CARE_ID) }),
+      buildRequest("/api/v1/users/search?email=a@b.co&role=caretaker", {
+        token: signToken(CARE_ID),
+      }),
     );
     expect(res.status).toBe(403);
+  });
+
+  it("lets a tenant look up a staff contact by email and return only minimal fields", async () => {
+    const found = makeUser({
+      _id: makeObjectId("found-caretaker"),
+      name: "John Kiprono",
+      email: "care@keja.co",
+      role: "caretaker",
+      isActive: true,
+    });
+    user.findById.mockReturnValue(buildQuery(makeUser({ _id: TENANT_USER_ID, role: "tenant" })));
+    user.findOne.mockReturnValue(buildQuery(found));
+
+    const res = await GET(
+      buildRequest("/api/v1/users/search?email=care@keja.co", {
+        token: signToken(TENANT_USER_ID),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect((await json(res)).data).toEqual([
+      { id: found._id, name: "John Kiprono", role: "caretaker" },
+    ]);
+  });
+
+  it("returns an empty lookup when the contact is not a staff role", async () => {
+    const found = makeUser({
+      _id: makeObjectId("found-tenant"),
+      email: "other@keja.co",
+      role: "tenant",
+      isActive: true,
+    });
+    user.findById.mockReturnValue(buildQuery(makeUser({ _id: TENANT_USER_ID, role: "tenant" })));
+    user.findOne.mockReturnValue(buildQuery(found));
+
+    const res = await GET(
+      buildRequest("/api/v1/users/search?email=other@keja.co", {
+        token: signToken(TENANT_USER_ID),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect((await json(res)).data).toEqual([]);
   });
 
   it("caretaker with manage_tenants is allowed", async () => {
@@ -94,7 +137,9 @@ describe("GET /api/v1/users/search", () => {
     user.findOne.mockReturnValue(buildQuery(found));
 
     const res = await GET(
-      buildRequest("/api/v1/users/search?email=FOUND@keja.co", { token: signToken(OWNER_ID) }),
+      buildRequest("/api/v1/users/search?email=FOUND@keja.co&role=caretaker", {
+        token: signToken(OWNER_ID),
+      }),
     );
     expect(res.status).toBe(200);
     const body = await json(res);

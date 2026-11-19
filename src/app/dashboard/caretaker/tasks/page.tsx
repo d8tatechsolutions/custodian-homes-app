@@ -83,7 +83,9 @@ const CaretakerTasksPage = () => {
   const doneCount = items.filter((t) => t.status === "done").length;
   const visible = items
     .filter((t) => t.status === filter)
-    .filter((t) => matchesQuery(query, t.title, t.property, resolveAssignee(t), t.notes, t.priority));
+    .filter((t) =>
+      matchesQuery(query, t.title, t.property, resolveAssignee(t), t.notes, t.priority),
+    );
 
   const submit = async () => {
     if (!title.trim()) {
