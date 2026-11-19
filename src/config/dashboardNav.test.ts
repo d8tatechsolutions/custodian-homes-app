@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   adminNav,
   brokerNav,
+  buildDashboardNav,
   caretakerNav,
+  caretakerNavWithTenants,
   custodianNav,
+  findGroupForPath,
+  groupNavItems,
+  systemAdminNav,
   tenantNav,
   tenantSubRoutes,
 } from "@/config/dashboardNav";
@@ -96,5 +101,97 @@ describe("broker navigation", () => {
       "/dashboard/broker/commissions",
       "/dashboard/broker/profile",
     ]);
+  });
+});
+
+describe("nav grouping", () => {
+  const allNavs = [
+    adminNav,
+    caretakerNav,
+    caretakerNavWithTenants,
+    custodianNav,
+    brokerNav,
+    systemAdminNav,
+    tenantNav,
+    buildDashboardNav("admin"),
+  ];
+  const knownGroups = new Set([
+    "overview",
+    "properties",
+    "people",
+    "operations",
+    "administration",
+    "personal",
+    "finance",
+    "listings",
+  ]);
+
+  it("assigns every configured item a known group", () => {
+    for (const nav of allNavs) {
+      for (const item of nav) {
+        expect(item.group, `${item.label} (${item.to})`).toBeDefined();
+        expect(knownGroups.has(item.group as string), `${item.label} (${item.to})`).toBe(true);
+      }
+    }
+  });
+
+  it("groups consecutive items by their group slug", () => {
+    expect(groupNavItems(adminNav).map((g) => [g.id, g.label, g.items.length])).toEqual([
+      ["overview", "Overview", 1],
+      ["properties", "Properties", 2],
+      ["people", "People", 5],
+      ["operations", "Operations", 6],
+      ["administration", "Administration", 3],
+    ]);
+  });
+
+  it("groups tenant personal links and keeps discovery in listings", () => {
+    expect(groupNavItems(tenantNav).map((g) => [g.id, g.items.length])).toEqual([
+      ["overview", 1],
+      ["listings", 1],
+      ["personal", 8],
+    ]);
+  });
+
+  it("groups broker commissions under finance and profile under administration", () => {
+    expect(groupNavItems(brokerNav).map((g) => [g.id, g.items.length])).toEqual([
+      ["overview", 1],
+      ["properties", 1],
+      ["people", 2],
+      ["finance", 1],
+      ["administration", 1],
+    ]);
+  });
+
+  it("skips items without a group", () => {
+    const plain = { ...adminNav[0], group: undefined };
+    expect(groupNavItems([plain])).toEqual([]);
+    expect(groupNavItems([])).toEqual([]);
+  });
+});
+
+describe("findGroupForPath", () => {
+  const adminGroups = groupNavItems(adminNav);
+  const tenantGroups = groupNavItems(tenantNav);
+
+  it("matches root routes exactly", () => {
+    expect(findGroupForPath(adminGroups, "/dashboard/admin")).toBe("overview");
+    expect(findGroupForPath(adminGroups, "/dashboard/admin/portfolio")).not.toBe("overview");
+  });
+
+  it("matches nested routes by prefix", () => {
+    expect(findGroupForPath(adminGroups, "/dashboard/admin/portfolio/123")).toBe("properties");
+    expect(findGroupForPath(adminGroups, "/dashboard/admin/notifications")).toBe("operations");
+    expect(findGroupForPath(adminGroups, "/dashboard/admin/settings")).toBe("administration");
+  });
+
+  it("resolves tenant deep links and external routes", () => {
+    expect(findGroupForPath(tenantGroups, "/dashboard/tenant/favourites")).toBe("personal");
+    expect(findGroupForPath(tenantGroups, "/properties")).toBe("listings");
+  });
+
+  it("returns null for unknown paths or empty groups", () => {
+    expect(findGroupForPath(adminGroups, "/dashboard/admin/unknown")).toBeNull();
+    expect(findGroupForPath([], "/dashboard/admin")).toBeNull();
   });
 });
