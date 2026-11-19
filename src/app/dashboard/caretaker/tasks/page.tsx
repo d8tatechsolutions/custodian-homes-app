@@ -68,12 +68,22 @@ const CaretakerTasksPage = () => {
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
 
+  // assignedTo stores a user id; the signed-in caretaker is the loaded user
+  // here, and other assignees resolve via the stored name (or legacy raw value).
+  const assigneeNames = useMemo(() => {
+    const names = new Map<string, string>();
+    if (user?.id) names.set(user.id, caretakerName);
+    return names;
+  }, [user?.id, caretakerName]);
+  const resolveAssignee = (task: { assignedTo?: string; assignedToName?: string }) =>
+    assigneeNames.get(task.assignedTo ?? "") || task.assignedToName || task.assignedTo || "";
+
   const openCount = items.filter((t) => t.status === "open").length;
   const inProgressCount = items.filter((t) => t.status === "in-progress").length;
   const doneCount = items.filter((t) => t.status === "done").length;
   const visible = items
     .filter((t) => t.status === filter)
-    .filter((t) => matchesQuery(query, t.title, t.property, t.assignedTo, t.notes, t.priority));
+    .filter((t) => matchesQuery(query, t.title, t.property, resolveAssignee(t), t.notes, t.priority));
 
   const submit = async () => {
     if (!title.trim()) {
@@ -86,7 +96,7 @@ const CaretakerTasksPage = () => {
         propertyId: property || undefined,
         priority,
         status: "open",
-        assignedTo: caretakerName,
+        assignedTo: user?.id ?? "",
         assignedToName: caretakerName,
         dueDate: dueDate ? `${dueDate}T23:59:59` : new Date().toISOString(),
         notes: notes.trim() || undefined,
@@ -210,7 +220,7 @@ const CaretakerTasksPage = () => {
                   Due {formatDate(task.dueDate)}
                   {task.completedAt ? ` · done ${formatDate(task.completedAt)}` : ""}
                 </span>
-                <span className="font-medium text-foreground">{task.assignedTo || "—"}</span>
+                <span className="font-medium text-foreground">{resolveAssignee(task) || "—"}</span>
               </div>
               <div className="mt-4 flex gap-2">
                 {task.status !== "done" && (

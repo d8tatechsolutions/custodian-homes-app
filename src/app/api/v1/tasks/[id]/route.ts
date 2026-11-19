@@ -33,6 +33,15 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   if (actor.role === "custodian" && task.ownerId !== actor.managedByOwnerId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  // Admins are owner-scoped (plan §1.3): own tasks, or tasks on a property
+  // covered by an active delegated assignment for this action.
+  if (
+    actor.role === "admin" &&
+    task.ownerId !== actor.userId &&
+    !actor.propertyScopeIds.includes(task.propertyId)
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const titles = await propertyTitleMap([task.propertyId]);
   return NextResponse.json({ data: serializeTask(task, titles) });
@@ -66,6 +75,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   if (actor.role === "custodian" && task.ownerId !== actor.managedByOwnerId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (
+    actor.role === "admin" &&
+    task.ownerId !== actor.userId &&
+    !actor.propertyScopeIds.includes(task.propertyId)
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -136,7 +152,19 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   if (actor.role === "caretaker" && !actor.assignedPropertyIds.includes(task.propertyId)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  if (actor.role === "custodian" && task.ownerId !== actor.managedByOwnerId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (
+    actor.role === "admin" &&
+    task.ownerId !== actor.userId &&
+    !actor.propertyScopeIds.includes(task.propertyId)
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
-  await Task.deleteOne({ _id: id });
+  // Scope the mutation to the loaded task (matching PATCH's predicate) so a
+  // concurrent owner/property change cannot be deleted by id alone.
+  await Task.deleteOne({ _id: id, ownerId: task.ownerId, propertyId: task.propertyId });
   return NextResponse.json({ data: { id } });
 }

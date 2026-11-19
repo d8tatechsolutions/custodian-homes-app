@@ -45,6 +45,8 @@ taskSchema.index({ ownerId: 1, status: 1 });
 taskSchema.index({ propertyId: 1, status: 1 });
 taskSchema.index({ assignedTo: 1, status: 1 });
 taskSchema.index({ createdBy: 1, createdAt: -1 });
+taskSchema.index({ ownerId: 1, status: 1, createdAt: -1 });
+taskSchema.index({ propertyId: 1, status: 1, createdAt: -1 });
 
 export type TaskDocument = InferSchemaType<ITask>;
 

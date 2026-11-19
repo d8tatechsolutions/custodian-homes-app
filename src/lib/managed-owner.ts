@@ -1,3 +1,5 @@
+import { deriveManagedOwnerId } from "@/lib/auth-scope";
+import type { AssignmentLike } from "@/lib/authorization-policy";
 import { connectToDatabase } from "@/lib/mongoose";
 import { ManagementAssignment } from "@/models/ManagementAssignment";
 import { Property } from "@/models/Property";
@@ -15,13 +17,7 @@ export async function getManagedOwnerId(userId: string): Promise<string> {
   })
     .select("propertyId")
     .lean();
-  const propertyIds = [...new Set(assignments.map((a) => String(a.propertyId)))];
-  if (propertyIds.length === 0) return "";
-  const properties = await Property.find({ _id: { $in: propertyIds } })
-    .select("ownerId")
-    .lean();
-  const owners = new Set(properties.map((p) => String(p.ownerId ?? "")).filter(Boolean));
-  return [...owners][0] ?? "";
+  return deriveManagedOwnerId(assignments as unknown as AssignmentLike[]);
 }
 
 /**

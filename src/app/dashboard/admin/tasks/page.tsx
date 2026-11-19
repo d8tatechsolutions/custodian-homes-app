@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, ClipboardList, Clock, Loader2, Plus, Wrench } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { SearchInput } from "@/components/SearchInput";
@@ -28,7 +28,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { adminNav as nav } from "@/config/dashboardNav";
 import type { TaskPriority, TaskStatus } from "@/data/dashboard";
-import { caretakers } from "@/data/properties";
+import { useCaretakers } from "@/hooks/use-caretakers";
 import { useProperties } from "@/hooks/use-properties";
 import { useTaskMutations, useTasks } from "@/hooks/use-tasks";
 import { formatDate } from "@/lib/format";
@@ -50,6 +50,7 @@ type Filter = "open" | "in-progress" | "done";
 
 const AdminTasksPage = () => {
   const { properties } = useProperties();
+  const { caretakers } = useCaretakers();
   const { items, loading, error, refetch } = useTasks();
   const { createTask, updateTask, pending } = useTaskMutations();
 
@@ -63,13 +64,19 @@ const AdminTasksPage = () => {
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
 
+  // assignedTo stores a user id; names come from the loaded staff list, with
+  // the stored name (or legacy raw value) as fallback so old rows still render.
+  const assigneeNames = useMemo(() => new Map(caretakers.map((c) => [c.id, c.name])), [caretakers]);
+  const resolveAssignee = (task: { assignedTo?: string; assignedToName?: string }) =>
+    assigneeNames.get(task.assignedTo ?? "") || task.assignedToName || task.assignedTo || "";
+
   const openCount = items.filter((t) => t.status === "open").length;
   const inProgressCount = items.filter((t) => t.status === "in-progress").length;
   const doneCount = items.filter((t) => t.status === "done").length;
   const visible = items
     .filter((t) => t.status === filter)
     .filter((t) =>
-      matchesQuery(query, t.title, t.property, t.assignedTo, t.notes, t.priority, t.status),
+      matchesQuery(query, t.title, t.property, resolveAssignee(t), t.notes, t.priority, t.status),
     );
 
   const submit = async () => {
@@ -84,7 +91,7 @@ const AdminTasksPage = () => {
         propertyId: property || undefined,
         priority,
         status: "open",
-        assignedTo: assigned?.name ?? "Caretaker",
+        assignedTo: assignee || undefined,
         assignedToName: assigned?.name ?? "",
         dueDate: dueDate ? `${dueDate}T23:59:59` : new Date().toISOString(),
         notes: notes.trim() || undefined,
@@ -186,7 +193,7 @@ const AdminTasksPage = () => {
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {t.property || "—"} · Assigned to {t.assignedTo || "—"} · Due{" "}
+                  {t.property || "—"} · Assigned to {resolveAssignee(t) || "—"} · Due{" "}
                   {formatDate(t.dueDate)}
                 </p>
                 {t.notes && <p className="text-xs text-muted-foreground/80 italic">{t.notes}</p>}

@@ -239,10 +239,10 @@ describe("requirePermission — owner", () => {
     resetModelStubs();
   });
 
-  it("403 for edit/delete of own property", async () => {
-    const resource = { ownerId: OWNER_ID, caretakerIds: [] };
-    expect((await guard("property:edit", { resource }, ownerUser()))?.status).toBe(403);
-    expect((await guard("property:delete", { resource }, ownerUser()))?.status).toBe(403);
+  it("allows edit/delete of own property without an assignment", async () => {
+    const resource = { ownerId: OWNER_ID, propertyId: PROPERTY_ID, caretakerIds: [] };
+    expect(await guard("property:edit", { resource }, ownerUser())).toBeNull();
+    expect(await guard("property:delete", { resource }, ownerUser())).toBeNull();
   });
 
   it("403 for edit/delete of a foreign owner's property", async () => {
@@ -497,7 +497,7 @@ describe("getTenantScope", () => {
     expect((res as Response).status).toBe(401);
   });
 
-  it("scopes an admin to property assignments rather than its own user id", async () => {
+  it("scopes an admin to own properties plus active property assignments", async () => {
     const adminId = makeObjectId("assigned-admin");
     const assignedPropertyId = makeObjectId("admin-property");
     user.findById.mockReturnValue(buildQuery(makeUser({ _id: adminId, role: "admin" })));
@@ -521,11 +521,16 @@ describe("getTenantScope", () => {
 
     expect(res instanceof Response).toBe(false);
     if (res instanceof Response) return;
-    expect(res.filter).toEqual({ propertyId: { $in: [assignedPropertyId] } });
-    expect(res.leaseFilter).toEqual({ propertyId: { $in: [assignedPropertyId] } });
+    // WP3 contract: an admin sees their own rows UNIONed with the delegated
+    // property scope — the assignment clause never replaces ownership.
+    const expectedScope = {
+      $or: [{ ownerId: adminId }, { propertyId: { $in: [assignedPropertyId] } }],
+    };
+    expect(res.filter).toEqual(expectedScope);
+    expect(res.leaseFilter).toEqual(expectedScope);
   });
 
-  it("scopes an admin's unit assignment to tenants on that unit", async () => {
+  it("scopes an admin's unit assignment to own rows plus tenants on that unit", async () => {
     const adminId = makeObjectId("unit-admin");
     const propertyId = makeObjectId("unit-property");
     const blockId = makeObjectId("unit-block");
@@ -557,8 +562,13 @@ describe("getTenantScope", () => {
 
     expect(res instanceof Response).toBe(false);
     if (res instanceof Response) return;
-    expect(res.filter).toEqual({ _id: { $in: [tenantId] } });
-    expect(res.leaseFilter).toEqual({ unitId: { $in: [unitId] } });
+    // Unit delegation unions with the admin's own ownership on both filters.
+    expect(res.filter).toEqual({
+      $or: [{ ownerId: adminId }, { _id: { $in: [tenantId] } }],
+    });
+    expect(res.leaseFilter).toEqual({
+      $or: [{ ownerId: adminId }, { unitId: { $in: [unitId] } }],
+    });
     expect(unit.find).toHaveBeenCalledWith({
       $or: [{ _id: unitId, propertyId }],
     });
@@ -633,7 +643,7 @@ describe("getTenantScope", () => {
 });
 
 describe("tenantMatchesScope", () => {
-  it("owner role matches nothing (legacy scoping removed)", () => {
+  it("owner role matches tenants they own", () => {
     const scope = {
       filter: { ownerId: OWNER_ID },
       userId: OWNER_ID,
@@ -641,8 +651,11 @@ describe("tenantMatchesScope", () => {
       managedByOwnerId: "",
     };
     expect(tenantMatchesScope({ ownerId: OWNER_ID, propertyId: makeObjectId("p1") }, scope)).toBe(
-      false,
+      true,
     );
+    expect(
+      tenantMatchesScope({ ownerId: OTHER_OWNER_ID, propertyId: makeObjectId("p1") }, scope),
+    ).toBe(false);
   });
 
   it("system-admin matches every tenant", () => {
@@ -707,9 +720,13 @@ describe("requirePermission — invoicing actions", () => {
     }
   });
 
-  it("owner is denied invoicing actions", async () => {
+  it("owner may perform admin invoicing actions without an assignment", async () => {
     for (const action of INVOICE_ACTIONS) {
-      expect((await guard(action, undefined, ownerUser()))?.status).toBe(403);
+      if (action === "invoice:read-own") {
+        expect((await guard(action, undefined, ownerUser()))?.status).toBe(403);
+        continue;
+      }
+      expect(await guard(action, undefined, ownerUser())).toBeNull();
     }
   });
 
@@ -1087,8 +1104,8 @@ describe("requirePermission — custodian", () => {
     expect(await guard("custodian:manage", undefined, admin)).toBeNull();
   });
 
-  it("owner is denied managing custodians", async () => {
-    expect((await guard("custodian:manage", undefined, ownerUser()))?.status).toBe(403);
+  it("owner may manage custodians without an assignment", async () => {
+    expect(await guard("custodian:manage", undefined, ownerUser())).toBeNull();
   });
 
   it("tenant still cannot manage custodians", async () => {

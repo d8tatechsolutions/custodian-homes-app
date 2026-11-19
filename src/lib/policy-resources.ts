@@ -48,28 +48,33 @@ function ok(resource: PolicyResource): ResourceLoadResult {
 
 function propertyResource(doc: {
   _id: unknown;
+  ownerId?: string | null;
   lifecycleState?: PolicyResource["lifecycleState"];
 }): ResourceLoadResult {
   return ok({
     propertyId: String(doc._id),
+    ...(doc.ownerId ? { ownerId: String(doc.ownerId) } : {}),
     lifecycleState: doc.lifecycleState,
   });
 }
 
 export async function loadPropertyResource(id: string): Promise<ResourceLoadResult> {
   if (!isRecordId(id)) return invalidId;
-  const property = await Property.findById(id).select("_id lifecycleState").lean();
+  const property = await Property.findById(id).select("_id lifecycleState ownerId").lean();
   if (!property) return notFound;
   return propertyResource(property);
 }
 
 export async function loadBlockResource(id: string): Promise<ResourceLoadResult> {
   if (!isRecordId(id)) return invalidId;
-  const property = await Property.findOne({ "blocks._id": id }).select("_id lifecycleState").lean();
+  const property = await Property.findOne({ "blocks._id": id })
+    .select("_id lifecycleState ownerId")
+    .lean();
   if (!property) return notFound;
   return ok({
     propertyId: String(property._id),
     blockId: id,
+    ...(property.ownerId ? { ownerId: String(property.ownerId) } : {}),
     lifecycleState: property.lifecycleState,
   });
 }
@@ -86,7 +91,7 @@ export async function loadUnitResource(id: string): Promise<ResourceLoadResult> 
     _id: unit.propertyId,
     "blocks._id": unit.blockId,
   })
-    .select("_id lifecycleState")
+    .select("_id lifecycleState ownerId")
     .lean();
   if (!property) return inconsistent;
 
@@ -94,6 +99,7 @@ export async function loadUnitResource(id: string): Promise<ResourceLoadResult> 
     propertyId: String(property._id),
     blockId: String(unit.blockId),
     unitId: String(unit._id),
+    ...(property.ownerId ? { ownerId: String(property.ownerId) } : {}),
     lifecycleState: property.lifecycleState,
   });
 }

@@ -30,6 +30,11 @@ export interface PolicyActor {
 }
 
 export interface PolicyResource {
+  /**
+   * Owning user id. Admin resource-scoped checks fail closed when it is
+   * absent: an unknown owner must never be treated as "matches anything".
+   */
+  ownerId?: string;
   propertyId?: string;
   blockId?: string;
   unitId?: string;
@@ -288,6 +293,10 @@ export function evaluatePolicy(input: {
     return { allowed: false, reason: "resource-not-writable" };
   }
 
+  if (accessRole === "admin" && resource.ownerId === actor.userId) {
+    return { allowed: true, reason: "owner" };
+  }
+
   const activeAssignments = assignments.filter(
     (assignment) =>
       assignment.principalUserId === actor.userId && isActiveAssignment(assignment, now),
@@ -388,6 +397,9 @@ export function evaluatePortfolioPolicy(
   if (RESOURCE_FREE_ACTIONS.has(action)) {
     return { allowed: true, reason: "resource-free-action" };
   }
+  if (accessRole === "admin") {
+    return { allowed: true, reason: "admin-owner-scope" };
+  }
   const granted = context.assignments.some(
     (assignment) =>
       assignment.principalUserId === actor.userId &&
@@ -417,7 +429,7 @@ const CARETAKER_PRIVILEGE_ACTIONS: Record<string, PolicyAction[]> = {
   process_move_requests: ["move-request:create", "move-request:manage"],
   manage_invoices: ["invoice:read", "invoice:manage", "invoice:mark-paid", "invoice:generate"],
   manage_complaints: ["complaint:manage"],
-  manage_tasks: ["task:manage"],
+  manage_tasks: ["task:read-own", "task:create", "task:manage"],
   manage_announcements: ["announcement:read", "announcement:manage"],
   send_messages: ["chat:read-own", "chat:send", "chat:manage"],
   manage_documents: ["document:read-own", "document:manage"],
