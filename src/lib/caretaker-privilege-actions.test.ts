@@ -28,6 +28,16 @@ describe("caretakerPrivilegeActions", () => {
     expect(result.unrepresentable).toEqual([]);
   });
 
+  it("maps manage_tasks to the task read, create and manage actions", () => {
+    const result = caretakerPrivilegeActions(["manage_tasks"]);
+    expect(result.actions.filter((action) => action.startsWith("task:"))).toEqual([
+      "task:read-own",
+      "task:create",
+      "task:manage",
+    ]);
+    expect(result.unrepresentable).toEqual([]);
+  });
+
   it("reports privileges that exceed the caretaker maximum", () => {
     expect(caretakerPrivilegeActions(["create_property", "delete_assigned_property"])).toEqual({
       actions: ["property:read", "unit:read", "assignment:read"],

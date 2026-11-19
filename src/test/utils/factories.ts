@@ -271,6 +271,47 @@ export function makeInvoice(overrides: Partial<TestInvoice> = {}): TestInvoice {
   };
 }
 
+export interface TestTask {
+  _id: string;
+  title: string;
+  propertyId: string;
+  ownerId: string;
+  status: "open" | "in-progress" | "done";
+  priority: "low" | "medium" | "high";
+  assignedTo: string;
+  assignedToName: string;
+  createdBy: string;
+  createdByRole: string;
+  createdByName: string;
+  dueDate: string;
+  notes: string;
+  completedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export function makeTask(overrides: Partial<TestTask> = {}): TestTask {
+  return {
+    _id: makeObjectId("task"),
+    title: "Fix leaking tap",
+    propertyId: makeObjectId("prop"),
+    ownerId: makeObjectId("user"),
+    status: "open",
+    priority: "medium",
+    assignedTo: "",
+    assignedToName: "",
+    createdBy: makeObjectId("user"),
+    createdByRole: "admin",
+    createdByName: "Test Owner",
+    dueDate: "2026-12-01",
+    notes: "",
+    completedAt: "",
+    createdAt: new Date("2026-09-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
 export type TestNotificationType =
   | "invoice:paid"
   | "invoice:overdue"

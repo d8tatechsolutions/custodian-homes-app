@@ -1,7 +1,7 @@
 /** @vitest-environment node */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildRequest, signToken } from "@/test/utils/api-request";
-import { makeObjectId, makeUser } from "@/test/utils/factories";
+import { buildRequest, signToken, withParams } from "@/test/utils/api-request";
+import { makeObjectId, makeTask, makeUser } from "@/test/utils/factories";
 import { buildQuery, getModelStubs, resetModelStubs } from "@/test/utils/model-mocks";
 
 vi.mock("@/lib/mongoose", () => ({
@@ -14,6 +14,7 @@ vi.mock("@/models/ManagementAssignment", () => ({
   ManagementAssignment: getModelStubs().managementAssignment,
 }));
 
+import { GET as getTaskById, PATCH as patchTask } from "@/app/api/v1/tasks/[id]/route";
 import { GET, POST } from "@/app/api/v1/tasks/route";
 
 const { user, property, task, managementAssignment } = getModelStubs();
@@ -27,6 +28,11 @@ const OTHER_PROPERTY_ID = makeObjectId("prop2");
 
 function adminUser() {
   return makeUser({ _id: ADMIN_ID, role: "admin" });
+}
+
+/** Explicit fail-closed scope: portfolio permission passes, delegation is empty. */
+function noAssignment() {
+  managementAssignment.find.mockReturnValue(buildQuery([]));
 }
 
 function adminAssignment() {
@@ -126,6 +132,127 @@ describe("GET /api/v1/tasks", () => {
     expect(data).toHaveLength(1);
     expect(data[0]._id).toBe(TASK_ID);
     expect(data[0].property).toBe("Sunlit Studio");
+  });
+
+  it("admin with no assignment lists only own tasks, with no delegated $or clause", async () => {
+    user.findById.mockReturnValue(buildQuery(adminUser()));
+    noAssignment();
+    task.find.mockReturnValue(buildQuery([]).sort({ createdAt: -1 }).skip(0).limit(10));
+    task.countDocuments.mockResolvedValue(0);
+
+    const res = await GET(buildRequest("/api/v1/tasks", { token: signToken(ADMIN_ID) }));
+    expect(res.status).toBe(200);
+    // Ownership alone scopes the read — there is no union branch that could
+    // surface another owner's rows for an admin without an active delegation.
+    expect(task.find).toHaveBeenCalledWith({ ownerId: ADMIN_ID });
+    expect(task.countDocuments).toHaveBeenCalledWith({ ownerId: ADMIN_ID });
+    const body = await json(res);
+    expect(body.data).toEqual([]);
+    expect(body.pagination).toMatchObject({ page: 1, limit: 10, total: 0, totalPages: 0 });
+  });
+
+  it("admin with no assignment creates a task on their own property", async () => {
+    user.findById.mockReturnValue(buildQuery(adminUser()));
+    noAssignment();
+    property.findOne.mockReturnValue(buildQuery({ _id: PROPERTY_ID, ownerId: ADMIN_ID }));
+    property.find.mockReturnValue(buildQuery([{ _id: PROPERTY_ID, title: "Sunlit Studio" }]));
+    const created = makeTask({ _id: TASK_ID, propertyId: PROPERTY_ID, ownerId: ADMIN_ID });
+    task.create.mockResolvedValue({ ...created, toObject: () => created });
+
+    const res = await POST(
+      buildRequest("/api/v1/tasks", {
+        method: "POST",
+        token: signToken(ADMIN_ID),
+        headers: { "x-forwarded-for": "203.0.113.21" },
+        body: {
+          title: created.title,
+          propertyId: PROPERTY_ID,
+          priority: "medium",
+          status: "open",
+          dueDate: created.dueDate,
+        },
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(task.create).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerId: ADMIN_ID, propertyId: PROPERTY_ID }),
+    );
+    const body = await json(res);
+    expect((body.data as Record<string, unknown>).ownerId).toBe(ADMIN_ID);
+  });
+
+  it("admin with no assignment reads their own task by id", async () => {
+    user.findById.mockReturnValue(buildQuery(adminUser()));
+    noAssignment();
+    task.findById.mockReturnValue(
+      buildQuery(makeTask({ _id: TASK_ID, ownerId: ADMIN_ID, propertyId: PROPERTY_ID })),
+    );
+    property.find.mockReturnValue(buildQuery([{ _id: PROPERTY_ID, title: "Sunlit Studio" }]));
+
+    const res = await getTaskById(
+      buildRequest(`/api/v1/tasks/${TASK_ID}`, { token: signToken(ADMIN_ID) }),
+      withParams(TASK_ID),
+    );
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect((body.data as Record<string, unknown>).ownerId).toBe(ADMIN_ID);
+    expect((body.data as Record<string, unknown>).property).toBe("Sunlit Studio");
+  });
+
+  it("admin with no assignment patches their own task", async () => {
+    user.findById.mockReturnValue(buildQuery(adminUser()));
+    noAssignment();
+    const own = makeTask({ _id: TASK_ID, ownerId: ADMIN_ID, propertyId: PROPERTY_ID });
+    task.findById.mockReturnValue(buildQuery(own));
+    const updated = { ...own, title: "Updated by owner" };
+    task.findOneAndUpdate.mockReturnValue(buildQuery(updated));
+    property.find.mockReturnValue(buildQuery([{ _id: PROPERTY_ID, title: "Sunlit Studio" }]));
+
+    const res = await patchTask(
+      buildRequest(`/api/v1/tasks/${TASK_ID}`, {
+        method: "PATCH",
+        token: signToken(ADMIN_ID),
+        body: { title: "Updated by owner" },
+      }),
+      withParams(TASK_ID),
+    );
+    expect(res.status).toBe(200);
+    expect(task.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: TASK_ID, ownerId: ADMIN_ID, propertyId: PROPERTY_ID },
+      expect.objectContaining({ title: "Updated by owner" }),
+      { new: true, runValidators: true },
+    );
+    const body = await json(res);
+    expect((body.data as Record<string, unknown>).title).toBe("Updated by owner");
+  });
+
+  it("admin with an assignment that grants no task action still lists only own tasks", async () => {
+    // The assignment is active but carries only tenant:manage, so the
+    // task:read-own scope has no delegated properties to union with ownership.
+    user.findById.mockReturnValue(buildQuery(adminUser()));
+    managementAssignment.find.mockReturnValue(
+      buildQuery([
+        {
+          principalUserId: ADMIN_ID,
+          accessRole: "admin",
+          scopeType: "property",
+          propertyId: PROPERTY_ID,
+          permissions: ["tenant:manage"],
+          status: "active",
+          startsAt: new Date("2026-01-01T00:00:00.000Z"),
+          endsAt: null,
+        },
+      ]),
+    );
+    task.find.mockReturnValue(buildQuery([]).sort({ createdAt: -1 }).skip(0).limit(10));
+    task.countDocuments.mockResolvedValue(0);
+
+    const res = await GET(buildRequest("/api/v1/tasks", { token: signToken(ADMIN_ID) }));
+    expect(res.status).toBe(200);
+    expect(task.find).toHaveBeenCalledWith({ ownerId: ADMIN_ID });
+    expect(task.countDocuments).toHaveBeenCalledWith({ ownerId: ADMIN_ID });
+    const body = await json(res);
+    expect(body.data).toEqual([]);
   });
 });
 
@@ -321,6 +448,60 @@ describe("POST /api/v1/tasks", () => {
     const body = await json(res);
     expect(body.error).toBe("A property must be specified");
     expect(property.findOne).not.toHaveBeenCalled();
+    expect(task.create).not.toHaveBeenCalled();
+  });
+
+  it("admin with no assignment and no propertyId creates a task owned by themselves", async () => {
+    user.findById.mockReturnValue(buildQuery(adminUser()));
+    noAssignment();
+    const created = makeTask({ _id: TASK_ID, ownerId: ADMIN_ID, propertyId: "" });
+    task.create.mockResolvedValue({ ...created, toObject: () => created });
+
+    const res = await POST(
+      buildRequest("/api/v1/tasks", {
+        method: "POST",
+        token: signToken(ADMIN_ID),
+        headers: { "x-forwarded-for": "203.0.113.22" },
+        body: {
+          title: created.title,
+          priority: "medium",
+          status: "open",
+          dueDate: created.dueDate,
+        },
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(property.findOne).not.toHaveBeenCalled();
+    expect(task.create).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerId: ADMIN_ID, propertyId: "" }),
+    );
+    const body = await json(res);
+    expect((body.data as Record<string, unknown>).ownerId).toBe(ADMIN_ID);
+  });
+
+  it("403 when an admin with no assignment creates on a property owned by another admin", async () => {
+    user.findById.mockReturnValue(buildQuery(adminUser()));
+    noAssignment();
+    property.findOne.mockReturnValue(
+      buildQuery({ _id: OTHER_PROPERTY_ID, ownerId: OTHER_ADMIN_ID }),
+    );
+
+    const res = await POST(
+      buildRequest("/api/v1/tasks", {
+        method: "POST",
+        token: signToken(ADMIN_ID),
+        headers: { "x-forwarded-for": "203.0.113.23" },
+        body: {
+          title: "Fix tap",
+          propertyId: OTHER_PROPERTY_ID,
+          priority: "medium",
+          status: "open",
+          dueDate: "2026-01-10",
+        },
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(property.findOne).toHaveBeenCalledWith({ _id: OTHER_PROPERTY_ID, deletedAt: null });
     expect(task.create).not.toHaveBeenCalled();
   });
 });

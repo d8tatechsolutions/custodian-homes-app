@@ -45,6 +45,11 @@ const ADMIN_ID = makeObjectId("admin");
 const PROPERTY_ID = makeObjectId("p1");
 const TENANT_ID = makeObjectId("t1");
 
+// WP3: an admin's delegated property scope unions with their own ownership.
+const ADMIN_TENANT_SCOPE = {
+  $or: [{ ownerId: OWNER_ID }, { propertyId: { $in: [PROPERTY_ID] } }],
+};
+
 function ownerDoc() {
   return makeUser({ _id: OWNER_ID, role: "admin" });
 }
@@ -94,7 +99,7 @@ describe("GET /api/v1/tenants", () => {
     expect(res.status).toBe(403);
   });
 
-  it("owner sees only their own tenants", async () => {
+  it("admin sees own tenants plus tenants on assigned properties", async () => {
     managementAssignment.find.mockReturnValue(
       buildQuery([
         {
@@ -119,8 +124,8 @@ describe("GET /api/v1/tenants", () => {
 
     const res = await GET(buildRequest("/api/v1/tenants", { token: signToken(OWNER_ID) }));
     expect(res.status).toBe(200);
-    expect(tenantStub.find).toHaveBeenCalledWith({ propertyId: { $in: [PROPERTY_ID] } });
-    expect(tenantStub.countDocuments).toHaveBeenCalledWith({ propertyId: { $in: [PROPERTY_ID] } });
+    expect(tenantStub.find).toHaveBeenCalledWith(ADMIN_TENANT_SCOPE);
+    expect(tenantStub.countDocuments).toHaveBeenCalledWith(ADMIN_TENANT_SCOPE);
     expect(chain.select).toHaveBeenCalledWith(
       "name email phone propertyId ownerId status joinedAt notes createdAt updatedAt userId",
     );

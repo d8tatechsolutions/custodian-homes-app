@@ -42,6 +42,11 @@ const PROPERTY_ID = makeObjectId("p1");
 const UNIT_ID = makeObjectId("u1");
 const OTHER_PROPERTY_ID = makeObjectId("p2");
 
+// WP3: an admin's delegated property scope unions with their own ownership.
+const ADMIN_LEASE_SCOPE = {
+  $or: [{ ownerId: OWNER_ID }, { propertyId: { $in: [PROPERTY_ID] } }],
+};
+
 const LEASE_INPUT = {
   tenantId: TENANT_ID,
   propertyId: PROPERTY_ID,
@@ -94,7 +99,7 @@ describe("GET /api/v1/leases", () => {
     expect(leaseStub.find).not.toHaveBeenCalled();
   });
 
-  it("200 for an owner scoped to their own leases with pagination", async () => {
+  it("200 for an admin scoped to own and assigned leases with pagination", async () => {
     managementAssignment.find.mockReturnValue(
       buildQuery([
         {
@@ -116,7 +121,7 @@ describe("GET /api/v1/leases", () => {
 
     const res = await GET(buildRequest("/api/v1/leases", { token: signToken(OWNER_ID) }));
     expect(res.status).toBe(200);
-    expect(leaseStub.find).toHaveBeenCalledWith({ propertyId: { $in: [PROPERTY_ID] } });
+    expect(leaseStub.find).toHaveBeenCalledWith(ADMIN_LEASE_SCOPE);
     const body = await json(res);
     expect(body.data).toHaveLength(2);
     expect(body.pagination).toEqual({
@@ -155,6 +160,7 @@ describe("GET /api/v1/leases", () => {
     );
     expect(res.status).toBe(200);
     expect(leaseStub.find).toHaveBeenCalledWith({
+      ...ADMIN_LEASE_SCOPE,
       propertyId: PROPERTY_ID,
       status: "ended",
       tenantId: "t",
@@ -192,7 +198,7 @@ describe("GET /api/v1/leases", () => {
     leaseStub.countDocuments.mockResolvedValue(0);
 
     await GET(buildRequest("/api/v1/leases", { token: signToken(OWNER_ID) }));
-    expect(leaseStub.find).toHaveBeenCalledWith({ propertyId: { $in: [PROPERTY_ID] } });
+    expect(leaseStub.find).toHaveBeenCalledWith(ADMIN_LEASE_SCOPE);
     expect(chain.select).toHaveBeenCalledWith(
       "tenantId propertyId ownerId unitId rentAmount frequency startDate endDate status notes createdAt updatedAt",
     );

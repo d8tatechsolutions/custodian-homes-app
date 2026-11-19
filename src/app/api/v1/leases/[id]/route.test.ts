@@ -139,7 +139,7 @@ describe("GET /api/v1/leases/[id]", () => {
     expect(res.status).toBe(200);
     expect(leaseStub.findOne).toHaveBeenCalledWith({
       _id: LEASE_ID,
-      propertyId: { $in: [PROPERTY_ID] },
+      $or: [{ ownerId: OWNER_ID }, { propertyId: { $in: [PROPERTY_ID] } }],
     });
     const body = await json(res);
     expect((body.data as { ownerId?: string }).ownerId).toBe(OWNER_ID);

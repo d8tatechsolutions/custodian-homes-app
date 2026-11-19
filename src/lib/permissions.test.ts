@@ -497,7 +497,7 @@ describe("getTenantScope", () => {
     expect((res as Response).status).toBe(401);
   });
 
-  it("scopes an admin to property assignments rather than its own user id", async () => {
+  it("scopes an admin to own properties plus active property assignments", async () => {
     const adminId = makeObjectId("assigned-admin");
     const assignedPropertyId = makeObjectId("admin-property");
     user.findById.mockReturnValue(buildQuery(makeUser({ _id: adminId, role: "admin" })));
@@ -521,11 +521,16 @@ describe("getTenantScope", () => {
 
     expect(res instanceof Response).toBe(false);
     if (res instanceof Response) return;
-    expect(res.filter).toEqual({ propertyId: { $in: [assignedPropertyId] } });
-    expect(res.leaseFilter).toEqual({ propertyId: { $in: [assignedPropertyId] } });
+    // WP3 contract: an admin sees their own rows UNIONed with the delegated
+    // property scope — the assignment clause never replaces ownership.
+    const expectedScope = {
+      $or: [{ ownerId: adminId }, { propertyId: { $in: [assignedPropertyId] } }],
+    };
+    expect(res.filter).toEqual(expectedScope);
+    expect(res.leaseFilter).toEqual(expectedScope);
   });
 
-  it("scopes an admin's unit assignment to tenants on that unit", async () => {
+  it("scopes an admin's unit assignment to own rows plus tenants on that unit", async () => {
     const adminId = makeObjectId("unit-admin");
     const propertyId = makeObjectId("unit-property");
     const blockId = makeObjectId("unit-block");
@@ -557,8 +562,13 @@ describe("getTenantScope", () => {
 
     expect(res instanceof Response).toBe(false);
     if (res instanceof Response) return;
-    expect(res.filter).toEqual({ _id: { $in: [tenantId] } });
-    expect(res.leaseFilter).toEqual({ unitId: { $in: [unitId] } });
+    // Unit delegation unions with the admin's own ownership on both filters.
+    expect(res.filter).toEqual({
+      $or: [{ ownerId: adminId }, { _id: { $in: [tenantId] } }],
+    });
+    expect(res.leaseFilter).toEqual({
+      $or: [{ ownerId: adminId }, { unitId: { $in: [unitId] } }],
+    });
     expect(unit.find).toHaveBeenCalledWith({
       $or: [{ _id: unitId, propertyId }],
     });
