@@ -1,14 +1,16 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import { LogOut, Menu } from "lucide-react";
+import { ChevronDown, LogOut, Menu } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { findGroupForPath, groupNavItems } from "@/config/dashboardNav";
+import { useNavAccordion } from "@/contexts/NavAccordionContext";
 import { useAuth } from "@/hooks/use-auth";
 import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
@@ -21,6 +23,7 @@ export interface DashNavItem {
   to: string;
   label: string;
   icon: LucideIcon;
+  group?: string;
 }
 
 interface Props {
@@ -31,11 +34,45 @@ interface Props {
   children: ReactNode;
 }
 
+type Surface = "desktop" | "mobile";
+
 export const DashboardShell = ({ roleName, nav, title, subtitle, children }: Props) => {
   const pathname = usePathname();
   const router = useRouter();
   const { signOut } = useAuth();
+  const { openGroup, setOpenGroup } = useNavAccordion();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const groups = groupNavItems(nav);
+  const ungrouped = nav.filter((item) => !item.group);
+
+  const previousOpen = useRef<string | null>(openGroup);
+  const lastPathname = useRef<string | null>(null);
+  const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const panelRefs = useRef<Record<string, HTMLElement | null>>({});
+
+  useEffect(() => {
+    if (lastPathname.current === pathname) return;
+    lastPathname.current = pathname;
+    const activeGroup = findGroupForPath(groupNavItems(nav), pathname);
+    if (activeGroup) setOpenGroup(activeGroup);
+  }, [pathname, nav, setOpenGroup]);
+
+  useEffect(() => {
+    const previous = previousOpen.current;
+    if (previous && previous !== openGroup) {
+      for (const surface of ["desktop", "mobile"] as const) {
+        const prefix = `${surface}-${previous}-`;
+        for (const key of Object.keys(panelRefs.current)) {
+          if (!key.startsWith(prefix)) continue;
+          const panel = panelRefs.current[key];
+          const trigger = triggerRefs.current[key];
+          if (panel && trigger && panel.contains(document.activeElement)) trigger.focus();
+        }
+      }
+    }
+    previousOpen.current = openGroup;
+  }, [openGroup]);
 
   const handleSignOut = () => {
     try {
@@ -58,29 +95,91 @@ export const DashboardShell = ({ roleName, nav, title, subtitle, children }: Pro
     }
   };
 
-  const navList = (onNavigate?: () => void) => (
-    <nav className="flex flex-col gap-1">
-      {nav.map((item) => {
-        const isRoot = /^\/dashboard\/[^/]+$/.test(item.to);
-        const active = isRoot
-          ? pathname === item.to
-          : pathname === item.to || pathname.startsWith(`${item.to}/`);
-        const Icon = item.icon;
+  const isActive = (to: string) => {
+    const isRoot = /^\/dashboard\/[^/]+$/.test(to);
+    return isRoot ? pathname === to : pathname === to || pathname.startsWith(`${to}/`);
+  };
+
+  const toggleGroup = (id: string) => {
+    setOpenGroup(openGroup === id ? null : id);
+  };
+
+  const renderItem = (item: DashNavItem, onNavigate?: () => void) => {
+    const active = isActive(item.to);
+    const Icon = item.icon;
+    return (
+      <Link
+        key={`${item.to}-${item.label}`}
+        href={item.to}
+        onClick={onNavigate}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
+          active
+            ? "bg-primary text-primary-foreground shadow-soft"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+      >
+        <Icon className="h-4 w-4" />
+        {item.label}
+      </Link>
+    );
+  };
+
+  const navList = (onNavigate?: () => void, surface: Surface = "desktop") => (
+    <nav aria-label={`${roleName} navigation`} className="flex flex-col gap-1">
+      {ungrouped.map((item) => renderItem(item, onNavigate))}
+      {groups.map((group, index) => {
+        const key = `${surface}-${group.id}-${index}`;
+        const panelId = `${key}-panel`;
+        const isOpen = openGroup === group.id;
+        const GroupIcon = group.icon;
         return (
-          <Link
-            key={`${item.to}-${item.label}`}
-            href={item.to}
-            onClick={onNavigate}
-            className={cn(
-              "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
-              active
-                ? "bg-primary text-primary-foreground shadow-soft"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            {item.label}
-          </Link>
+          <div key={key} className="flex flex-col">
+            <button
+              ref={(node) => {
+                triggerRefs.current[key] = node;
+              }}
+              type="button"
+              aria-expanded={isOpen}
+              aria-controls={panelId}
+              onClick={() => toggleGroup(group.id)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all",
+                isOpen
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {GroupIcon ? <GroupIcon className="h-4 w-4" /> : null}
+              <span className="flex-1">{group.label}</span>
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 shrink-0 transition-transform duration-200",
+                  isOpen && "rotate-180",
+                )}
+                aria-hidden="true"
+              />
+            </button>
+            <section
+              ref={(node) => {
+                panelRefs.current[key] = node;
+              }}
+              id={panelId}
+              aria-label={group.label}
+              inert={!isOpen}
+              className={cn(
+                "grid transition-all duration-200 ease-out",
+                isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+              )}
+            >
+              <div className="overflow-hidden">
+                <div className="flex flex-col gap-1 py-1 pl-3">
+                  {group.items.map((item) => renderItem(item, onNavigate))}
+                </div>
+              </div>
+            </section>
+          </div>
         );
       })}
     </nav>
@@ -94,7 +193,7 @@ export const DashboardShell = ({ roleName, nav, title, subtitle, children }: Pro
           <div className="mb-4 px-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
             {roleName}
           </div>
-          {navList()}
+          {navList(undefined, "desktop")}
           <div className="mt-auto rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
             <p className="mb-2 font-medium text-foreground">Need help?</p>
             <p>
@@ -134,7 +233,7 @@ export const DashboardShell = ({ roleName, nav, title, subtitle, children }: Pro
                     <div className="mb-3 px-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
                       {roleName}
                     </div>
-                    {navList(() => setMobileOpen(false))}
+                    {navList(() => setMobileOpen(false), "mobile")}
                   </div>
                 </SheetContent>
               </Sheet>
