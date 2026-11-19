@@ -293,6 +293,10 @@ export function evaluatePolicy(input: {
     return { allowed: false, reason: "resource-not-writable" };
   }
 
+  if (accessRole === "admin" && resource.ownerId === actor.userId) {
+    return { allowed: true, reason: "owner" };
+  }
+
   const activeAssignments = assignments.filter(
     (assignment) =>
       assignment.principalUserId === actor.userId && isActiveAssignment(assignment, now),
@@ -392,6 +396,9 @@ export function evaluatePortfolioPolicy(
   }
   if (RESOURCE_FREE_ACTIONS.has(action)) {
     return { allowed: true, reason: "resource-free-action" };
+  }
+  if (accessRole === "admin") {
+    return { allowed: true, reason: "admin-owner-scope" };
   }
   const granted = context.assignments.some(
     (assignment) =>

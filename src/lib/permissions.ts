@@ -293,6 +293,16 @@ export async function requirePermission(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Fail closed for unresolvable resources: a route that declares a resource
+  // but supplies no propertyId/_id cannot be scoped, so an admin must not be
+  // allowed through the portfolio path. (Invariant 2 — an absent owner must
+  // never match anything.) Without this, ownerId-only resources silently
+  // pass; the only such call sites are caretaker-only conditionals (audit
+  // Change 4), so this has no effect on admin routes today.
+  if (opts?.resource && !policyResource && user.role === "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const decision = policyResource
     ? evaluateActorPolicy(context, action as PolicyAction, policyResource)
     : evaluatePortfolioPolicy(context, action as PolicyAction);
@@ -420,15 +430,10 @@ export async function getTenantScope(
 
   if (user.role === "admin") {
     const { hasAssignments, ...assignmentScope } = await ctx.assignmentScope("admin", action);
-    // Aligned with requirePermission (plan §1.1 cause C3): an admin without
-    // an active assignment granting the action is denied, not handed an
-    // empty scope that silently reads as "no rows".
-    if (!hasAssignments) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    void hasAssignments;
 
-    const tenantClauses: Record<string, unknown>[] = [];
-    const leaseClauses: Record<string, unknown>[] = [];
+    const tenantClauses: Record<string, unknown>[] = [{ ownerId: userId }];
+    const leaseClauses: Record<string, unknown>[] = [{ ownerId: userId }];
     if (assignmentScope.propertyScopeIds.length > 0) {
       tenantClauses.push({ propertyId: { $in: assignmentScope.propertyScopeIds } });
       leaseClauses.push({ propertyId: { $in: assignmentScope.propertyScopeIds } });
@@ -489,6 +494,7 @@ export function tenantMatchesScope(
 ): boolean {
   if (scope.role === "admin") {
     return (
+      tenant.ownerId === scope.userId ||
       (scope.propertyScopeIds?.includes(tenant.propertyId) ?? false) ||
       (scope.assignedTenantIds?.includes(String(tenant._id ?? "")) ?? false)
     );
