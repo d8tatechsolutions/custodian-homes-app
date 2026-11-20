@@ -26,6 +26,7 @@ interface UserDoc {
   privileges?: string[];
   tokenVersion?: number;
   createdAt?: Date;
+  userCode?: string;
 }
 
 function serialize(user: UserDoc) {
@@ -38,6 +39,7 @@ function serialize(user: UserDoc) {
     isActive: user.isActive !== false,
     privileges: user.privileges ?? [],
     createdAt: user.createdAt ?? null,
+    userCode: user.userCode ?? "",
   };
 }
 
@@ -84,7 +86,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
   await connectToDatabase();
   const target = (await User.findById(id)
-    .select("name email phone role isActive privileges tokenVersion createdAt")
+    .select("name email phone role isActive privileges tokenVersion createdAt userCode")
     .lean()) as UserDoc | null;
   if (!target) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -169,7 +171,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 
   const updated = (await User.findById(id)
-    .select("name email phone role isActive privileges tokenVersion createdAt")
+    .select("name email phone role isActive privileges tokenVersion createdAt userCode")
     .lean()) as UserDoc | null;
 
   return NextResponse.json({ data: serialize(updated ?? target) });

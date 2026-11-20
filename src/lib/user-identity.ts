@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import type { Role } from "@/lib/permissions";
 import { isValidE164, normalizeStoredPhone } from "@/lib/phone";
+import { withUserCodeRetry } from "@/lib/user-code";
 import { User } from "@/models/User";
 
 export function normalizeContactEmail(value?: string | null): string {
@@ -117,16 +118,19 @@ export async function createPhoneOnlyAccount(input: CreatePhoneOnlyAccountInput)
 
   const plainPassword = crypto.randomBytes(12).toString("base64url");
   const passwordHash = await bcrypt.hash(plainPassword, 12);
-  const user = await User.create({
-    email: undefined,
-    name: input.name.trim(),
-    phone,
-    passwordHash,
-    role: input.role,
-    isActive: true,
-    isVerified: true,
-    privileges: input.privileges ?? [],
-  });
+  const user = await withUserCodeRetry((userCode) =>
+    User.create({
+      email: undefined,
+      name: input.name.trim(),
+      phone,
+      passwordHash,
+      role: input.role,
+      isActive: true,
+      isVerified: true,
+      privileges: input.privileges ?? [],
+      userCode,
+    }),
+  );
 
   return { user, password: plainPassword };
 }

@@ -110,7 +110,7 @@ describe("GET /api/v1/caretakers", () => {
       role: "caretaker",
       _id: { $in: [CARE_1] },
     });
-    expect(chain.select).toHaveBeenCalledWith("name email phone privileges");
+    expect(chain.select).toHaveBeenCalledWith("name email phone privileges userCode");
     expect(managementAssignment.aggregate).toHaveBeenCalled();
     const data = (await json(res)).data as Array<Record<string, unknown>>;
     expect(data).toHaveLength(2);

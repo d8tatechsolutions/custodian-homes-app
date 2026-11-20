@@ -10,6 +10,7 @@ import { buildPaginationResult, parsePagination } from "@/lib/pagination";
 import type { Role } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { ASSIGNABLE_ROLES, isUserRole } from "@/lib/role-management";
+import { isUserCode, userCodeLookupFilter, withUserCodeRetry } from "@/lib/user-code";
 import { createPhoneOnlyAccount, resolveUserByContact } from "@/lib/user-identity";
 import { User } from "@/models/User";
 
@@ -22,6 +23,7 @@ interface UserListDoc {
   phone?: string;
   role?: string;
   isActive?: boolean;
+  userCode?: string;
   createdAt?: Date;
 }
 
@@ -33,6 +35,7 @@ function serialize(user: UserListDoc) {
     phone: user.phone ?? "",
     role: user.role ?? "",
     isActive: user.isActive !== false,
+    userCode: user.userCode ?? "",
     createdAt: user.createdAt ?? null,
   };
 }
@@ -41,6 +44,13 @@ function serialize(user: UserListDoc) {
 export async function GET(request: NextRequest) {
   const actor = await requireRoleManagementActor(request);
   if (actor instanceof NextResponse) return actor;
+
+  const rateLimited = await rateLimit(request, {
+    windowMs: 60_000,
+    limit: 60,
+    key: `admin-users-list:${actor.userId}`,
+  });
+  if (rateLimited instanceof NextResponse) return rateLimited;
 
   const { page, limit } = parsePagination({
     page: request.nextUrl.searchParams.get("page") ?? undefined,
@@ -57,20 +67,37 @@ export async function GET(request: NextRequest) {
   if (active === "true" || active === "false") filter.isActive = active === "true";
 
   const search = (params.get("search") ?? params.get("q") ?? "").trim().slice(0, 100);
-  if (search) {
+  // A code-shaped term is an exact, indexed `$eq` — it never joins the text
+  // `$or`, and `userCode` is never given a regex/prefix predicate. Anything
+  // else (including a legitimate multi-word name such as "Chandra Mwangi")
+  // keeps the existing name/email/phone scan; a non-code term is not an error.
+  const isCodeSearch = Boolean(search) && isUserCode(search);
+  if (isCodeSearch) {
+    // `userCodeLookupFilter` returns the full top-level filter shape, so unwrap
+    // the field condition before assigning it onto the query filter.
+    filter.userCode = userCodeLookupFilter(search).userCode;
+  } else if (search) {
     const pattern = new RegExp(escapeRegex(search), "i");
     filter.$or = [{ name: pattern }, { email: pattern }, { phone: pattern }];
   }
 
-  const [items, total] = await Promise.all([
-    User.find(filter)
-      .select("name email phone role isActive createdAt")
-      .sort({ createdAt: -1, _id: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean(),
-    User.countDocuments(filter),
-  ]);
+  const itemsQuery = User.find(filter)
+    .select("name email phone role isActive userCode createdAt")
+    .sort({ createdAt: -1, _id: -1 })
+    .skip((page - 1) * limit)
+    .limit(limit)
+    .lean();
+
+  if (isCodeSearch) {
+    // At most one document can match, so `countDocuments` would only repeat the
+    // same index lookup.
+    const items = (await itemsQuery) as unknown as UserListDoc[];
+    return NextResponse.json(
+      buildPaginationResult(items.map(serialize), items.length, page, limit),
+    );
+  }
+
+  const [items, total] = await Promise.all([itemsQuery, User.countDocuments(filter)]);
 
   return NextResponse.json(
     buildPaginationResult(
@@ -229,18 +256,21 @@ export async function POST(request: NextRequest) {
   // Email path: create inactive + unverified with verification token.
   const verificationToken = crypto.randomUUID();
   const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const created = await User.create({
-    email,
-    name: displayName,
-    phone: phone ?? "",
-    passwordHash: crypto.randomBytes(32).toString("hex"),
-    role,
-    privileges: role === "caretaker" ? (privileges ?? []) : [],
-    isActive: false,
-    isVerified: false,
-    verificationToken,
-    verificationTokenExpiry,
-  });
+  const created = await withUserCodeRetry((userCode) =>
+    User.create({
+      email,
+      name: displayName,
+      phone: phone ?? "",
+      passwordHash: crypto.randomBytes(32).toString("hex"),
+      role,
+      privileges: role === "caretaker" ? (privileges ?? []) : [],
+      isActive: false,
+      isVerified: false,
+      verificationToken,
+      verificationTokenExpiry,
+      userCode,
+    }),
+  );
 
   if (email) {
     await sendInviteEmail(email, created.name, role, verificationToken);

@@ -91,7 +91,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     new: true,
     runValidators: true,
   })
-    .select("name email phone privileges")
+    .select("name email phone privileges userCode")
     .lean();
   if (!updated) {
     return NextResponse.json({ error: "Caretaker not found" }, { status: 404 });
@@ -124,6 +124,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       phone: updated.phone ?? "",
       managedByOwnerId: await getManagedOwnerId(String(updated._id)),
       privileges: updated.privileges ?? [],
+      userCode: updated.userCode ?? "",
     },
   });
 }

@@ -10,6 +10,8 @@ export interface UserRow {
   name: string;
   email?: string;
   phone?: string;
+  /** Non-secret account identifier (`CXXXXXX`); empty when not yet assigned. */
+  userCode?: string;
   role: UserRole;
   isActive: boolean;
   privileges?: string[];
@@ -44,6 +46,7 @@ function normalizeUser(raw: unknown): UserRow {
     name: String(r.name ?? ""),
     email: r.email != null ? String(r.email) : undefined,
     phone: r.phone != null ? String(r.phone) : undefined,
+    userCode: String(r.userCode ?? ""),
     role: (r.role as UserRole) ?? "tenant",
     isActive: r.isActive !== false,
     privileges: Array.isArray(r.privileges) ? (r.privileges as string[]) : [],

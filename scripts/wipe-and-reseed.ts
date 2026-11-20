@@ -1,7 +1,9 @@
+import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import { roleMaximumActions } from "../src/lib/authorization-policy.ts";
+import { USER_CODE_ALPHABET, USER_CODE_LENGTH, USER_CODE_PREFIX } from "../src/lib/user-code.ts";
 
 dotenv.config({ path: ".env.local" });
 
@@ -13,10 +15,34 @@ const mongoUri = (() => {
 
 const softDelete = { deletedAt: { type: Date, default: null } };
 
+const seededUserCodes = new Set<string>();
+
+/**
+ * Deterministic, distinct `CXXXXXX` code per seeded email (plan §9.3): the email
+ * is hashed and bytes are mapped into USER_CODE_ALPHABET, so re-seeding is stable
+ * and the value satisfies ^C[0-9A-HJ-NP-Z]{6}$ without touching the (invisible)
+ * generation hook.
+ */
+function deriveSeededUserCode(email: string): string {
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const digest = crypto.createHash("sha256").update(`${email}#${attempt}`).digest();
+    let code = USER_CODE_PREFIX;
+    for (let i = 0; i < USER_CODE_LENGTH; i += 1) {
+      code += USER_CODE_ALPHABET[digest[i] % USER_CODE_ALPHABET.length];
+    }
+    if (!seededUserCodes.has(code)) {
+      seededUserCodes.add(code);
+      return code;
+    }
+  }
+  throw new Error(`Unable to derive a unique user code for ${email}`);
+}
+
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     email: { type: String, trim: true, lowercase: true },
+    userCode: { type: String },
     passwordHash: { type: String, required: true },
     role: { type: String, required: true },
     privileges: { type: [String], default: [] },
@@ -173,6 +199,7 @@ async function main() {
     email: "sysadmin@keja.test",
     passwordHash: password,
     role: "system-admin",
+    userCode: deriveSeededUserCode("sysadmin@keja.test"),
     isVerified: true,
     isActive: true,
   });
@@ -182,6 +209,7 @@ async function main() {
     email: "admin@keja.test",
     passwordHash: password,
     role: "admin",
+    userCode: deriveSeededUserCode("admin@keja.test"),
     isVerified: true,
     isActive: true,
   });
@@ -192,6 +220,7 @@ async function main() {
     email: "custodian@keja.test",
     passwordHash: password,
     role: "custodian",
+    userCode: deriveSeededUserCode("custodian@keja.test"),
     isVerified: true,
     isActive: true,
   });
@@ -202,6 +231,7 @@ async function main() {
     email: "caretaker@keja.test",
     passwordHash: password,
     role: "caretaker",
+    userCode: deriveSeededUserCode("caretaker@keja.test"),
     privileges: [
       "create_property",
       "edit_property",
@@ -225,6 +255,7 @@ async function main() {
     email: "tenant@keja.test",
     passwordHash: password,
     role: "tenant",
+    userCode: deriveSeededUserCode("tenant@keja.test"),
     isVerified: true,
     isActive: true,
   });
