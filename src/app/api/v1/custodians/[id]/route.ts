@@ -110,6 +110,7 @@ export async function PATCH(request: NextRequest, ctx: RouteContext) {
       phone: custodian.phone ?? "",
       managedByOwnerId: await getManagedOwnerId(String(custodian._id)),
       privileges: custodian.privileges ?? [],
+      userCode: custodian.userCode ?? "",
     },
   });
 }

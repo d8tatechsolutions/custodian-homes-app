@@ -87,7 +87,9 @@ export const UserRoleManager = ({ refreshKey = 0 }: { refreshKey?: number }) => 
     isActive: boolean;
   } | null>(null);
 
-  const visible = users.filter((u) => matchesQuery(search, u.name, u.email, u.phone, u.role));
+  const visible = users.filter((u) =>
+    matchesQuery(search, u.name, u.email, u.phone, u.role, u.userCode),
+  );
 
   const requestChange = (u: UserRow, nextRole: UserRow["role"]) => {
     if (nextRole === u.role) return;
@@ -204,6 +206,7 @@ export const UserRoleManager = ({ refreshKey = 0 }: { refreshKey?: number }) => 
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>User Code</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Change role</TableHead>
@@ -213,7 +216,7 @@ export const UserRoleManager = ({ refreshKey = 0 }: { refreshKey?: number }) => 
             <TableBody>
               {visible.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                     No users match your search.
                   </TableCell>
                 </TableRow>
@@ -235,6 +238,7 @@ export const UserRoleManager = ({ refreshKey = 0 }: { refreshKey?: number }) => 
                         </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">{u.email ?? "—"}</TableCell>
+                      <TableCell className="font-mono text-xs">{u.userCode || "—"}</TableCell>
                       <TableCell>
                         <Badge variant="secondary">{u.role}</Badge>
                       </TableCell>

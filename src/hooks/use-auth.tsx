@@ -19,6 +19,8 @@ export interface AuthUser {
   whatsapp?: string;
   /** National ID number (PII — never exposed outside the owner's own session). */
   nationalId?: string;
+  /** Non-secret account identifier (`CXXXXXX`); shown as plain text, never masked. */
+  userCode?: string;
 }
 
 export interface ProfilePatch {

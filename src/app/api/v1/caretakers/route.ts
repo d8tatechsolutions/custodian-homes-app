@@ -9,6 +9,7 @@ import { getManagedOwnerId, getStaffIdsForOwner } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
 import { authenticate, CARETAKER_PRIVILEGES, getAdminAssignmentScope } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
+import { withUserCodeRetry } from "@/lib/user-code";
 import { createPhoneOnlyAccount, resolveUserByContact } from "@/lib/user-identity";
 import { ManagementAssignment } from "@/models/ManagementAssignment";
 import { Property } from "@/models/Property";
@@ -24,6 +25,12 @@ const caretakerInviteSchema = z
     ownerId: z.string().trim().optional(),
   })
   .refine((data) => data.email || data.phone, "Email or phone is required");
+
+function readUserCode(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const code = (value as Record<string, unknown>).userCode;
+  return typeof code === "string" ? code : "";
+}
 
 export async function GET(request: NextRequest) {
   const auth = authenticate(request);
@@ -80,7 +87,7 @@ export async function GET(request: NextRequest) {
   }
 
   const caretakers = await User.find(filter)
-    .select(forPropertyAssignment ? "name" : "name email phone privileges")
+    .select(forPropertyAssignment ? "name" : "name email phone privileges userCode")
     .sort({ name: 1 })
     .lean();
 
@@ -108,6 +115,7 @@ export async function GET(request: NextRequest) {
     phone: forPropertyAssignment ? "" : (c.phone ?? ""),
     managedByOwnerId: forPropertyAssignment ? "" : (allowedOwnerIds[0] ?? ""),
     privileges: forPropertyAssignment ? [] : (c.privileges ?? []),
+    userCode: forPropertyAssignment ? undefined : (c.userCode ?? ""),
     propertyCount: countByCaretaker.get(String(c._id)) ?? 0,
   }));
 
@@ -250,6 +258,7 @@ export async function POST(request: NextRequest) {
           phone: update.phone ?? existing.phone ?? phone,
           managedByOwnerId: boundOwnerId,
           privileges,
+          userCode: readUserCode(existing),
         },
       });
     }
@@ -286,6 +295,7 @@ export async function POST(request: NextRequest) {
           phone,
           managedByOwnerId: boundOwnerId,
           privileges,
+          userCode: readUserCode(existing),
         },
       },
       { status: 201 },
@@ -316,6 +326,7 @@ export async function POST(request: NextRequest) {
           phone: created.phone,
           managedByOwnerId: boundOwnerId,
           privileges: created.privileges,
+          userCode: created.userCode ?? "",
         },
       },
       { status: 201 },
@@ -327,18 +338,21 @@ export async function POST(request: NextRequest) {
   const verificationToken = crypto.randomUUID();
   const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  const created = await User.create({
-    email,
-    name: displayName,
-    phone,
-    passwordHash,
-    role: "caretaker",
-    privileges,
-    isActive: false,
-    isVerified: false,
-    verificationToken,
-    verificationTokenExpiry,
-  });
+  const created = await withUserCodeRetry((userCode) =>
+    User.create({
+      email,
+      name: displayName,
+      phone,
+      passwordHash,
+      role: "caretaker",
+      privileges,
+      isActive: false,
+      isVerified: false,
+      verificationToken,
+      verificationTokenExpiry,
+      userCode,
+    }),
+  );
 
   await sendInviteEmail(email, created.name, "caretaker", verificationToken);
   await audit("caretaker.invited", String(created._id), {
@@ -357,6 +371,7 @@ export async function POST(request: NextRequest) {
         phone: created.phone ?? "",
         managedByOwnerId: boundOwnerId,
         privileges: created.privileges,
+        userCode: created.userCode ?? "",
       },
     },
     { status: 201 },

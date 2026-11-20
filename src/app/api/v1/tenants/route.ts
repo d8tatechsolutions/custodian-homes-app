@@ -9,6 +9,7 @@ import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
 import { getTenantScope, requirePermission } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
+import { withUserCodeRetry } from "@/lib/user-code";
 import { createPhoneOnlyAccount, resolveUserByContact } from "@/lib/user-identity";
 import { MoveRequest } from "@/models/MoveRequest";
 import { Property } from "@/models/Property";
@@ -371,17 +372,20 @@ export async function POST(request: NextRequest) {
     const verificationToken = crypto.randomUUID();
     const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    await User.create({
-      email,
-      name: parsed.data.name,
-      phone,
-      passwordHash,
-      role: "tenant",
-      isActive: false,
-      isVerified: false,
-      verificationToken,
-      verificationTokenExpiry,
-    });
+    await withUserCodeRetry((userCode) =>
+      User.create({
+        email,
+        name: parsed.data.name,
+        phone,
+        passwordHash,
+        role: "tenant",
+        isActive: false,
+        isVerified: false,
+        verificationToken,
+        verificationTokenExpiry,
+        userCode,
+      }),
+    );
 
     await sendInviteEmail(email, parsed.data.name, "tenant", verificationToken);
   }

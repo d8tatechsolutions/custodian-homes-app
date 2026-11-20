@@ -82,6 +82,9 @@ const AdminSettingsPage = () => {
             <div>
               <p className="font-display text-lg font-semibold">{user?.name ?? "Admin"}</p>
               <p className="text-sm text-muted-foreground">{user?.email}</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                User Code <span className="font-mono text-foreground">{user?.userCode || "—"}</span>
+              </p>
               <span className="mt-1 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium capitalize text-primary">
                 {user?.role}
               </span>

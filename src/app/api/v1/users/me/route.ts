@@ -10,7 +10,7 @@ import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { profileUpdate } from "@/lib/schemas";
 import { User } from "@/models/User";
 
-const PROFILE_FIELDS = "name email role phone whatsapp nationalId";
+const PROFILE_FIELDS = "name email role phone whatsapp nationalId userCode";
 
 interface ProfileDoc {
   _id: unknown;
@@ -20,6 +20,7 @@ interface ProfileDoc {
   phone?: string;
   whatsapp?: string;
   nationalId?: string;
+  userCode?: string;
 }
 
 function serialize(user: ProfileDoc) {
@@ -31,6 +32,7 @@ function serialize(user: ProfileDoc) {
     phone: user.phone ?? "",
     whatsapp: user.whatsapp ?? "",
     nationalId: decryptField(user.nationalId ?? ""),
+    userCode: user.userCode ?? "",
   };
 }
 

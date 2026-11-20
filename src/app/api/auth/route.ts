@@ -11,6 +11,7 @@ import { isValidE164, isValidNationalId, normalizeNationalId } from "@/lib/phone
 import { isProfileComplete } from "@/lib/profile-completion";
 import { rateLimitAuth } from "@/lib/rate-limit-auth";
 import { type Role, roleRoute } from "@/lib/role-routes";
+import { withUserCodeRetry } from "@/lib/user-code";
 import { normalizeContactEmail, normalizeContactPhone } from "@/lib/user-identity";
 import { Tenant } from "@/models/Tenant";
 import { User } from "@/models/User";
@@ -247,16 +248,19 @@ export async function POST(request: Request) {
       const verificationToken = await generateVerificationToken();
       const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-      const createdUser = await User.create({
-        email,
-        name: parsed.data.name,
-        passwordHash,
-        role: parsed.data.role,
-        phone: parsed.data.phone,
-        nationalId: encryptField(normalizeNationalId(parsed.data.nationalId)),
-        verificationToken,
-        verificationTokenExpiry,
-      });
+      const createdUser = await withUserCodeRetry((userCode) =>
+        User.create({
+          email,
+          name: parsed.data.name,
+          passwordHash,
+          role: parsed.data.role,
+          phone: parsed.data.phone,
+          nationalId: encryptField(normalizeNationalId(parsed.data.nationalId)),
+          verificationToken,
+          verificationTokenExpiry,
+          userCode,
+        }),
+      );
 
       const appBaseUrl = getAppUrl();
       const verifyUrl = `${appBaseUrl}/auth/verify?token=${verificationToken}`;

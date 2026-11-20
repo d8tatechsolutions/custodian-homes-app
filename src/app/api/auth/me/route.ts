@@ -40,6 +40,7 @@ export async function GET(request: Request) {
         phone: user.phone ?? "",
         whatsapp: user.whatsapp ?? "",
         nationalId: decryptField(user.nationalId ?? ""),
+        userCode: user.userCode ?? "",
       },
     });
   } catch (_error) {

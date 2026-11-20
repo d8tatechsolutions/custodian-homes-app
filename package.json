@@ -22,7 +22,9 @@
     "reconcile:commissions": "tsx scripts/reconcile-commissions.ts",
     "backfill:commissions": "tsx scripts/backfill-commissions.ts",
     "backfill:tasks": "tsx scripts/backfill-task-permissions.ts",
-    "backfill:chat": "tsx scripts/backfill-chat-approval-state.ts"
+    "backfill:chat": "tsx scripts/backfill-chat-approval-state.ts",
+    "backfill:user-codes": "tsx scripts/backfill-user-codes.ts",
+    "migrate:user-code-index": "tsx scripts/migrate-user-code-index.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
