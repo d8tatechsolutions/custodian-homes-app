@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export type Role = "tenant" | "caretaker" | "custodian" | "admin" | "broker" | "system-admin";
@@ -55,18 +55,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [refreshFailed, setRefreshFailed] = useState(false);
 
+  // Tracks whether this provider instance has ever held an authenticated
+  // session. A 401 from /api/auth/me only signals an *expired* session when
+  // the visitor was actually signed in during this page lifecycle; a stale
+  // cookie left over from a previous visit (or an anonymous visitor) must not
+  // surface a misleading "Session expired" toast on the login/auth pages.
+  const hadSessionRef = useRef(false);
+
   const refresh = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/me");
-      if (!res.ok) {
-        setUser(null);
-        setRefreshFailed(true);
-        toast.error("Session expired", { description: "Please sign in again." });
+      if (res.ok) {
+        const data = await res.json();
+        // `user: null` means the visitor is anonymous — a normal state on the
+        // login page and right after signing out, not an expired session.
+        const nextUser = (data.user ?? null) as AuthUser | null;
+        setUser(nextUser);
+        if (nextUser) hadSessionRef.current = true;
+        setRefreshFailed(false);
         return;
       }
-      const data = await res.json();
-      setUser(data.user);
-      setRefreshFailed(false);
+      setUser(null);
+      setRefreshFailed(true);
+      if (res.status === 401 && hadSessionRef.current) {
+        toast.error("Session expired", { description: "Please sign in again." });
+      }
     } catch {
       setUser(null);
       setRefreshFailed(true);
@@ -93,6 +106,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const data = await res.json();
       const signedInUser = data.user as AuthUser;
       setUser(signedInUser);
+      hadSessionRef.current = true;
       toast.success("Welcome back!");
       return signedInUser;
     } catch (err) {
@@ -186,6 +200,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setUser(null);
       setRefreshFailed(false);
+      hadSessionRef.current = false;
       toast.success("Signed out successfully");
     }
   };
