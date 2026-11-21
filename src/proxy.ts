@@ -28,7 +28,18 @@ export async function proxy(request: NextRequest) {
 
     const role = getRoleFromToken(token);
     if (!role) {
-      return NextResponse.redirect(new URL("/auth", request.url));
+      // Expired/malformed token: drop the stale cookie so it stops being
+      // sent on subsequent requests (and stops triggering 401s/toasts).
+      const response = NextResponse.redirect(new URL("/auth", request.url));
+      response.cookies.set("keja-token", "", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 0,
+        expires: new Date(0),
+        path: "/",
+      });
+      return response;
     }
 
     if (pathname === "/dashboard" || pathname === "/dashboard/") {
