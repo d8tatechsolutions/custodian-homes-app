@@ -77,7 +77,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       setUser(null);
       setRefreshFailed(true);
-      if (res.status === 401 && hadSessionRef.current) {
+      if (
+        res.status === 401 &&
+        hadSessionRef.current &&
+        typeof window !== "undefined" &&
+        window.location.pathname.startsWith("/dashboard")
+      ) {
         toast.error("Session expired", { description: "Please sign in again." });
       }
     } catch {
