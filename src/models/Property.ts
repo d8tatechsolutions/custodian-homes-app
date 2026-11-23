@@ -4,6 +4,7 @@ import {
   PROPERTY_LIFECYCLE_STATES,
   PROPERTY_PURPOSES,
 } from "@/lib/domain-enums";
+import { UPPER_FLOOR_MODES } from "@/lib/duplex-layout";
 import { softDeletePlugin } from "@/lib/mongoose-soft-delete";
 
 const floorSchema = new Schema(
@@ -19,6 +20,11 @@ const floorSchema = new Schema(
     purpose: { type: String, enum: [...PROPERTY_PURPOSES, null], default: null },
     // Duplex override: null/undefined inherits from the block-level setting.
     duplex: { type: Boolean, default: null },
+    // Per-unit duplex overrides by position (null = inherit the floor flag).
+    unitDuplex: { type: [Boolean], default: [] },
+    // How duplexes that start on this floor affect the floor above
+    // (keep | consume | full). See lib/duplex-layout.ts.
+    upperFloorMode: { type: String, enum: [...UPPER_FLOOR_MODES], default: "keep" },
   },
   { _id: true },
 );
