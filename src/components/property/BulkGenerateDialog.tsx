@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,22 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { BlockInputPayload } from "@/hooks/use-properties";
 import { generateBulkStructure, validateBulkGeneration } from "@/lib/bulk-structure";
+import {
+  UPPER_FLOOR_MODE_LABELS,
+  UPPER_FLOOR_MODES,
+  type UpperFloorMode,
+} from "@/lib/duplex-layout";
+import { countPreviewUnits } from "@/lib/structure-preview";
 
 const bulkSchema = z.object({
   blockName: z.string().trim().min(1, "Block name is required").max(80),
@@ -25,6 +38,7 @@ const bulkSchema = z.object({
   includeGroundFloor: z.boolean(),
   startLevel: z.coerce.number().int().min(-5).max(200),
   duplex: z.boolean(),
+  upperFloorMode: z.enum(UPPER_FLOOR_MODES),
   rentOverride: z.string().optional(),
 });
 
@@ -36,7 +50,20 @@ interface BulkGenerateDialogProps {
   blocks: BlockInputPayload[];
   onChange: (blocks: BlockInputPayload[]) => void;
   disabled?: boolean;
-  existingUnitCount?: number;
+}
+
+/** First "Block X" name not already used on the property. */
+export function nextBlockName(blocks: BlockInputPayload[]): string {
+  const used = new Set(blocks.map((block) => block.name.trim().toLowerCase()));
+  for (let i = 0; i < 26 * 27; i += 1) {
+    const letter =
+      i < 26
+        ? String.fromCharCode(65 + i)
+        : `${String.fromCharCode(64 + Math.floor(i / 26))}${String.fromCharCode(65 + (i % 26))}`;
+    const candidate = `Block ${letter}`;
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+  return `Block ${blocks.length + 1}`;
 }
 
 export function BulkGenerateDialog({
@@ -45,19 +72,26 @@ export function BulkGenerateDialog({
   blocks,
   onChange,
   disabled = false,
-  existingUnitCount = 0,
 }: BulkGenerateDialogProps) {
   const [form, setForm] = useState<BulkForm>({
-    blockName: "Block A",
+    blockName: nextBlockName(blocks),
     floors: 3,
     unitsPerFloor: 4,
     includeGroundFloor: true,
     startLevel: 1,
     duplex: false,
+    upperFloorMode: "keep",
     rentOverride: "",
   });
   const [errors, setErrors] = useState<string[]>([]);
-  const [confirmReplace, setConfirmReplace] = useState(false);
+
+  // Each time the dialog opens, suggest a block name that is not taken yet.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-run on open
+  useEffect(() => {
+    if (!open) return;
+    setForm((f) => ({ ...f, blockName: nextBlockName(blocks) }));
+    setErrors([]);
+  }, [open]);
 
   const handleGenerate = () => {
     const parsed = bulkSchema.safeParse(form);
@@ -80,44 +114,26 @@ export function BulkGenerateDialog({
         startLevel: form.startLevel,
         floorRentOverride: rentOverride,
         duplex: form.duplex,
+        upperFloorMode: form.duplex ? form.upperFloorMode : "keep",
       },
     };
 
+    // Bulk generate only ever ADDS a block: existing blocks, floors, units and
+    // unit names are never replaced or renamed.
     const validationErrors = validateBulkGeneration({
       blocks: [spec],
-      existingUnitCount: blocks.length > 0 ? existingUnitCount : 0,
+      existingUnitCount: blocks.reduce((sum, block) => sum + countPreviewUnits(block), 0),
+      existingBlockNames: blocks.map((block) => block.name),
     });
-
-    // If there are existing blocks and we're not appending, prompt for replace.
-    if (blocks.length > 0 && !confirmReplace) {
-      const ok = window.confirm(
-        "This will replace the existing structure. Continue? (Cancel to append instead.)",
-      );
-      if (!ok) {
-        // Append mode: generate and append.
-        try {
-          const generated = generateBulkStructure({ blocks: [spec], mode: "append" });
-          onChange([...blocks, ...generated]);
-          setErrors([]);
-          onOpenChange(false);
-        } catch (e) {
-          setErrors([e instanceof Error ? e.message : "Generation failed"]);
-        }
-        return;
-      }
-      setConfirmReplace(true);
-    }
-
     if (validationErrors.length > 0) {
       setErrors(validationErrors);
       return;
     }
 
     try {
-      const generated = generateBulkStructure({ blocks: [spec] });
-      onChange(generated);
+      const generated = generateBulkStructure({ blocks: [spec], mode: "append" });
+      onChange([...blocks, ...generated]);
       setErrors([]);
-      setConfirmReplace(false);
       onOpenChange(false);
     } catch (e) {
       setErrors([e instanceof Error ? e.message : "Generation failed"]);
@@ -130,7 +146,8 @@ export function BulkGenerateDialog({
         <DialogHeader>
           <DialogTitle>Bulk generate structure</DialogTitle>
           <DialogDescription>
-            Generate floors and units automatically. Review before saving.
+            Adds a new block with floors and units. Existing blocks and units are never replaced.
+            Review before saving.
           </DialogDescription>
         </DialogHeader>
 
@@ -207,6 +224,30 @@ export function BulkGenerateDialog({
             <Label htmlFor="bulk-duplex">Duplex (units span 2 floors)</Label>
           </div>
 
+          {form.duplex && (
+            <div className="space-y-1">
+              <Label htmlFor="bulk-upper-mode">Floor above each duplex</Label>
+              <Select
+                value={form.upperFloorMode}
+                disabled={disabled}
+                onValueChange={(val) =>
+                  setForm((f) => ({ ...f, upperFloorMode: val as UpperFloorMode }))
+                }
+              >
+                <SelectTrigger id="bulk-upper-mode" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {UPPER_FLOOR_MODES.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {UPPER_FLOOR_MODE_LABELS[mode]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="space-y-1">
             <Label htmlFor="bulk-rent">Rent override (optional)</Label>
             <Input
@@ -234,7 +275,7 @@ export function BulkGenerateDialog({
             Cancel
           </Button>
           <Button onClick={handleGenerate} disabled={disabled}>
-            Generate
+            Add block
           </Button>
         </DialogFooter>
       </DialogContent>

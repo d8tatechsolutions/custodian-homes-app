@@ -284,3 +284,43 @@ describe("generateBulkStructure", () => {
     ).toThrow(/duplicate block name/i);
   });
 });
+
+describe("bulk generation — append only and upper floor modes", () => {
+  const spec = (over: Record<string, unknown> = {}) => ({
+    name: "Block B",
+    duplex: true,
+    floors: { floorCount: 4, unitsPerFloor: 2, includeGroundFloor: false, ...over },
+  });
+
+  it("refuses a name already used by an existing block (never replaces it)", () => {
+    const errors = validateBulkGeneration({
+      blocks: [spec()],
+      existingBlockNames: ["block b"],
+    });
+    expect(errors.join(" ")).toMatch(/already exists/);
+  });
+
+  it("full: alternating floors are taken by the duplexes below", () => {
+    const floors = generateBulkFloors({ ...spec().floors, duplex: true, upperFloorMode: "full" });
+    expect(floors.map((f) => f.unitNames)).toEqual([
+      ["1A-2A", "1B-2B"],
+      [],
+      ["3A-4A", "3B-4B"],
+      [],
+    ]);
+  });
+
+  it("consume: counts only the units that will exist", () => {
+    const errors = validateBulkGeneration({
+      blocks: [spec({ duplex: true, upperFloorMode: "consume" })],
+      existingUnitCount: MAX_UNITS_PER_PROPERTY - 4,
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it("keep (default) leaves today's behaviour unchanged", () => {
+    const floors = generateBulkFloors({ ...spec().floors, duplex: true });
+    expect(floors.map((f) => f.unitNames?.length)).toEqual([2, 2, 2, 2]);
+    expect(floors[3].duplex).toBe(false);
+  });
+});
