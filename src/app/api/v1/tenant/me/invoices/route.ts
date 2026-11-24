@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { resolveTenantActor, resolveTenantIds } from "@/app/api/v1/_helpers";
-import { serializeInvoice } from "@/lib/invoicing";
+import { invoiceStatusFilter, serializeInvoice } from "@/lib/invoicing";
 import { connectToDatabase } from "@/lib/mongoose";
 import { notifyOverdueInvoices } from "@/lib/notifications";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
@@ -35,14 +35,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(buildPaginationResult([], 0, page, limit));
   }
 
-  const filter: Record<string, unknown> = { tenantId: { $in: tenantIds } };
-  if (period) filter.period = period;
-  if (status === "overdue") {
-    filter.status = "pending";
-    filter.dueDate = { $lt: now };
-  } else if (status) {
-    filter.status = status;
+  // Drafts are templates: never shown to tenants, whatever the filter.
+  if (status === "draft") {
+    return NextResponse.json(buildPaginationResult([], 0, page, limit));
   }
+  const filter: Record<string, unknown> = {
+    tenantId: { $in: tenantIds },
+    status: { $ne: "draft" },
+  };
+  if (period) filter.period = period;
+  const statusFilter = invoiceStatusFilter(status, now);
+  if (statusFilter) Object.assign(filter, statusFilter);
 
   if (status === "overdue") {
     await notifyOverdueInvoices(now, { tenantId: { $in: tenantIds } });

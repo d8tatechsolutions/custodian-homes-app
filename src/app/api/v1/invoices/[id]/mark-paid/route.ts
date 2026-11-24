@@ -3,7 +3,12 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody, resolveInvoiceActor } from "@/app/api/v1/_helpers";
 import { accrueCommissionForSettledInvoice } from "@/lib/commission";
-import { canMarkPaid, resolveManualPayment, serializeInvoice } from "@/lib/invoicing";
+import {
+  canMarkPaid,
+  OPEN_INVOICE_STATUSES,
+  resolveManualPayment,
+  serializeInvoice,
+} from "@/lib/invoicing";
 import { connectToDatabase } from "@/lib/mongoose";
 import { notifyInvoicePaid } from "@/lib/notifications";
 import { requirePermission } from "@/lib/permissions";
@@ -65,7 +70,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   if (!canMarkPaid(invoice.status)) {
     return NextResponse.json(
-      { error: invoice.status === "paid" ? "Invoice is already paid" : "Invoice is void" },
+      {
+        error:
+          invoice.status === "paid"
+            ? "Invoice is already paid"
+            : invoice.status === "draft"
+              ? "Issue the draft before recording a payment"
+              : "Invoice is void",
+      },
       { status: 409 },
     );
   }
@@ -115,7 +127,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const updated = await Invoice.findOneAndUpdate(
     {
       _id: id,
-      status: { $in: ["pending", "draft"] },
+      // Open (issued) invoices only; drafts are templates and never payable.
+      status: { $in: [...OPEN_INVOICE_STATUSES] },
       // Optimistic guard: bail out if a concurrent writer changed the paid
       // amount between our read and this update rather than losing a payment.
       amountPaid: invoice.amountPaid ?? 0,

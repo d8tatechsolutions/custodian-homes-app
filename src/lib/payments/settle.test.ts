@@ -108,7 +108,7 @@ describe("applyProviderPayment", () => {
       { $set: Record<string, unknown> },
     ];
     const set = updateData.$set;
-    expect(filter).toEqual({ _id: INVOICE_ID, status: { $in: ["pending", "draft"] } });
+    expect(filter).toEqual({ _id: INVOICE_ID, status: { $in: ["pending", "new", "draft"] } });
     expect(set.status).toBe("paid");
     expect(set.amountPaid).toBe(25000);
     expect(set.paidAt).toEqual(input.paidAt);

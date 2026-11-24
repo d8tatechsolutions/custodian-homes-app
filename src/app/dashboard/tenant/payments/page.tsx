@@ -38,8 +38,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { tenantNav } from "@/config/dashboardNav";
 import { useMyInvoiceMutations, useMyInvoices } from "@/hooks/use-my-invoices";
 import { formatKES, formatPeriod } from "@/lib/format";
-import type { DerivedInvoiceStatus } from "@/lib/invoicing";
-import { INVOICE_METHODS, type InvoiceMethod } from "@/lib/invoicing";
+import {
+  type DerivedInvoiceStatus,
+  INVOICE_METHODS,
+  type InvoiceMethod,
+  invoiceStatusLabel,
+  isOpenInvoiceStatus,
+} from "@/lib/invoicing";
 import { manualMethodRequiresReference } from "@/lib/payments/methods";
 import { COUNTRIES, DEFAULT_COUNTRY, isValidE164, toE164 } from "@/lib/phone";
 import { matchesQuery } from "@/lib/search";
@@ -48,6 +53,7 @@ import type { Invoice } from "@/types/invoicing";
 const statusClass: Record<DerivedInvoiceStatus, string> = {
   paid: "bg-success/15 text-success",
   pending: "bg-warning/15 text-warning",
+  new: "bg-warning/15 text-warning",
   overdue: "bg-destructive/15 text-destructive",
   draft: "bg-muted text-muted-foreground",
   void: "bg-muted text-muted-foreground",
@@ -105,7 +111,7 @@ const TenantPaymentsPage = () => {
   }, [checkPaymentReference, refetch]);
 
   const upcoming = useMemo(
-    () => invoices.filter((i) => i.status === "pending" || i.status === "overdue"),
+    () => invoices.filter((i) => isOpenInvoiceStatus(i.status) || i.status === "overdue"),
     [invoices],
   );
   const history = useMemo(() => invoices.filter((i) => i.status === "paid"), [invoices]);
@@ -114,7 +120,13 @@ const TenantPaymentsPage = () => {
 
   const tabRows = tab === "history" ? history : upcoming;
   const rows = tabRows.filter((invoice) =>
-    matchesQuery(query, invoice.period, invoice.invoiceNumber, invoice.status),
+    matchesQuery(
+      query,
+      invoice.period,
+      invoice.invoiceNumber,
+      invoice.status,
+      invoiceStatusLabel(invoice.status),
+    ),
   );
 
   const confirmPayment = async () => {
@@ -311,10 +323,8 @@ const TenantPaymentsPage = () => {
                       })}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        className={`${statusClass[invoice.status]} capitalize hover:opacity-100`}
-                      >
-                        {invoice.status}
+                      <Badge className={`${statusClass[invoice.status]} hover:opacity-100`}>
+                        {invoiceStatusLabel(invoice.status)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
@@ -329,7 +339,7 @@ const TenantPaymentsPage = () => {
                           Receipt
                         </Button>
                       ) : invoice.amountPaid === 0 &&
-                        (invoice.status === "pending" || invoice.status === "overdue") ? (
+                        (isOpenInvoiceStatus(invoice.status) || invoice.status === "overdue") ? (
                         <div className="flex flex-wrap justify-end gap-2">
                           {(invoice.online?.paystack ?? true) && (
                             <Button

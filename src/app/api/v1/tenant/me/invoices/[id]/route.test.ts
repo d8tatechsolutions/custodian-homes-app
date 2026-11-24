@@ -110,6 +110,7 @@ describe("GET /api/v1/tenant/me/invoices/[id]", () => {
     expect(invoiceStub.findOne).toHaveBeenCalledWith({
       _id: INVOICE_ID,
       tenantId: { $in: [TENANT_A] },
+      status: { $ne: "draft" },
     });
     const body = await json(res);
     expect((body.data as { tenantId?: string }).tenantId).toBe(TENANT_A);
@@ -187,7 +188,7 @@ describe("POST /api/v1/tenant/me/invoices/[id]", () => {
     );
     expect(res.status).toBe(200);
     expect(invoiceStub.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: INVOICE_ID, status: { $in: ["pending", "draft"] }, amountPaid: 0 },
+      { _id: INVOICE_ID, status: { $in: ["pending", "new"] }, amountPaid: 0 },
       expect.any(Object),
       expect.any(Object),
     );

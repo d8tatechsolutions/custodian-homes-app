@@ -176,6 +176,44 @@ export function useInvoiceMutations() {
     }
   };
 
+  /** Issue a draft: assigns its number and issue date (draft -> unpaid). */
+  const issueInvoice = async (id: string): Promise<Invoice> => {
+    setPending(true);
+    try {
+      const res = await fetch(`/api/v1/invoices/${id}/issue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to issue invoice");
+      }
+      return json.data as Invoice;
+    } finally {
+      setPending(false);
+    }
+  };
+
+  /** Copy an invoice into a new draft template (optionally for another month). */
+  const duplicateInvoice = async (id: string, period?: string): Promise<Invoice> => {
+    setPending(true);
+    try {
+      const res = await fetch(`/api/v1/invoices/${id}/duplicate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(period ? { period } : {}),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to duplicate invoice");
+      }
+      return json.data as Invoice;
+    } finally {
+      setPending(false);
+    }
+  };
+
   const deleteInvoice = async (id: string): Promise<void> => {
     setPending(true);
     try {
@@ -212,6 +250,8 @@ export function useInvoiceMutations() {
     updateInvoice,
     markPaid,
     voidInvoice,
+    issueInvoice,
+    duplicateInvoice,
     deleteInvoice,
     generate,
     pending,

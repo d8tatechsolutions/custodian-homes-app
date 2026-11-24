@@ -356,7 +356,9 @@ describe("PATCH /api/v1/invoices/[id]", () => {
     );
     expect(res.status).toBe(409);
     const body = await json(res);
-    expect(body.error).toBe("Paid or void invoices cannot be edited");
+    expect(body.error).toBe(
+      "Only draft invoices can be edited. Issued invoices can be paid or voided.",
+    );
   });
 
   it("409 when the invoice is void", async () => {
@@ -426,7 +428,6 @@ describe("PATCH /api/v1/invoices/[id]", () => {
       buildQuery([
         {
           principalUserId: OWNER_ID,
-
           accessRole: "admin",
           scopeType: "property",
           propertyId: PROPERTY_ID,
@@ -439,7 +440,7 @@ describe("PATCH /api/v1/invoices/[id]", () => {
     );
     invoiceStub.findById.mockReturnValue(buildQuery(draftInvoice()));
     invoiceStub.findOneAndUpdate.mockReturnValue(
-      buildQuery({ ...draftInvoice(), status: "pending", notes: "late fee" }),
+      buildQuery({ ...draftInvoice(), amountDue: 27000, notes: "late fee" }),
     );
 
     const res = await PATCH(
@@ -447,7 +448,6 @@ describe("PATCH /api/v1/invoices/[id]", () => {
         method: "PATCH",
         token: signToken(OWNER_ID),
         body: {
-          status: "pending",
           amountDue: 27000,
           notes: "late fee",
           invoiceNumber: "INV-SPOOF",
@@ -455,7 +455,6 @@ describe("PATCH /api/v1/invoices/[id]", () => {
           propertyId: makeObjectId("spoof"),
           leaseId: makeObjectId("spoof"),
           ownerId: OTHER_OWNER_ID,
-          period: "2099-01",
         },
       }),
       withParams(INVOICE_ID),
@@ -465,10 +464,137 @@ describe("PATCH /api/v1/invoices/[id]", () => {
       unknown,
       Record<string, unknown>,
     ];
-    expect(filter).toEqual({ _id: INVOICE_ID });
-    expect(updateData).toEqual({ status: "pending", amountDue: 27000, notes: "late fee" });
+    // Guarded on draft so a concurrent issue is never overwritten.
+    expect(filter).toEqual({ _id: INVOICE_ID, status: "draft" });
+    expect(updateData).toEqual({
+      amountDue: 27000,
+      serviceChargeAmount: 0,
+      rentAmount: 27000,
+      notes: "late fee",
+    });
     const body = await json(res);
-    expect((body.data as { status?: string }).status).toBe("pending");
+    expect((body.data as { status?: string }).status).toBe("draft");
+  });
+
+  it("409 when a status change is attempted through PATCH (use Issue)", async () => {
+    user.findById.mockReturnValue(buildQuery(makeUser({ _id: OWNER_ID, role: "admin" })));
+    managementAssignment.find.mockReturnValue(
+      buildQuery([
+        {
+          principalUserId: OWNER_ID,
+          accessRole: "admin",
+          scopeType: "property",
+          propertyId: PROPERTY_ID,
+          permissions: ["invoice:manage", "invoice:read"],
+          status: "active",
+          startsAt: new Date("2026-01-01T00:00:00.000Z"),
+          endsAt: null,
+        },
+      ]),
+    );
+    invoiceStub.findById.mockReturnValue(buildQuery(draftInvoice()));
+
+    const res = await PATCH(
+      buildRequest(`/api/v1/invoices/${INVOICE_ID}`, {
+        method: "PATCH",
+        token: signToken(OWNER_ID),
+        body: { status: "pending" },
+      }),
+      withParams(INVOICE_ID),
+    );
+    expect(res.status).toBe(409);
+    expect(invoiceStub.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it("409 when editing an issued (unpaid) invoice", async () => {
+    user.findById.mockReturnValue(buildQuery(makeUser({ _id: OWNER_ID, role: "admin" })));
+    managementAssignment.find.mockReturnValue(
+      buildQuery([
+        {
+          principalUserId: OWNER_ID,
+          accessRole: "admin",
+          scopeType: "property",
+          propertyId: PROPERTY_ID,
+          permissions: ["invoice:manage", "invoice:read"],
+          status: "active",
+          startsAt: new Date("2026-01-01T00:00:00.000Z"),
+          endsAt: null,
+        },
+      ]),
+    );
+    invoiceStub.findById.mockReturnValue(buildQuery({ ...draftInvoice(), status: "pending" }));
+
+    const res = await PATCH(
+      buildRequest(`/api/v1/invoices/${INVOICE_ID}`, {
+        method: "PATCH",
+        token: signToken(OWNER_ID),
+        body: { notes: "x" },
+      }),
+      withParams(INVOICE_ID),
+    );
+    expect(res.status).toBe(409);
+  });
+
+  it("moves a draft to another billed month and re-derives its due date", async () => {
+    user.findById.mockReturnValue(buildQuery(makeUser({ _id: OWNER_ID, role: "admin" })));
+    managementAssignment.find.mockReturnValue(
+      buildQuery([
+        {
+          principalUserId: OWNER_ID,
+          accessRole: "admin",
+          scopeType: "property",
+          propertyId: PROPERTY_ID,
+          permissions: ["invoice:manage", "invoice:read"],
+          status: "active",
+          startsAt: new Date("2026-01-01T00:00:00.000Z"),
+          endsAt: null,
+        },
+      ]),
+    );
+    invoiceStub.findById.mockReturnValue(buildQuery(draftInvoice()));
+    invoiceStub.findOneAndUpdate.mockReturnValue(buildQuery(draftInvoice()));
+
+    const res = await PATCH(
+      buildRequest(`/api/v1/invoices/${INVOICE_ID}`, {
+        method: "PATCH",
+        token: signToken(OWNER_ID),
+        body: { period: "2026-01" },
+      }),
+      withParams(INVOICE_ID),
+    );
+    expect(res.status).toBe(200);
+    const updateData = invoiceStub.findOneAndUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(updateData.period).toBe("2026-01");
+    expect(updateData.dueDate).toEqual(new Date(Date.UTC(2026, 1, 5)));
+  });
+
+  it("400 when moving a draft to a future month", async () => {
+    user.findById.mockReturnValue(buildQuery(makeUser({ _id: OWNER_ID, role: "admin" })));
+    managementAssignment.find.mockReturnValue(
+      buildQuery([
+        {
+          principalUserId: OWNER_ID,
+          accessRole: "admin",
+          scopeType: "property",
+          propertyId: PROPERTY_ID,
+          permissions: ["invoice:manage", "invoice:read"],
+          status: "active",
+          startsAt: new Date("2026-01-01T00:00:00.000Z"),
+          endsAt: null,
+        },
+      ]),
+    );
+    invoiceStub.findById.mockReturnValue(buildQuery(draftInvoice()));
+
+    const res = await PATCH(
+      buildRequest(`/api/v1/invoices/${INVOICE_ID}`, {
+        method: "PATCH",
+        token: signToken(OWNER_ID),
+        body: { period: "2099-01" },
+      }),
+      withParams(INVOICE_ID),
+    );
+    expect(res.status).toBe(400);
   });
 });
 

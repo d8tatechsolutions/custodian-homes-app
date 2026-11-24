@@ -13,7 +13,14 @@ import {
 } from "@/lib/billing-accounts";
 import { buildInvoiceForLease } from "@/lib/invoice-generation";
 import { nextInvoiceNumber } from "@/lib/invoice-numbering";
-import { computeDueDate, currentPeriod, serializeInvoice } from "@/lib/invoicing";
+import {
+  currentPeriod,
+  ISSUED_INVOICE_STATUS,
+  invoiceStatusFilter,
+  isFuturePeriod,
+  resolveDueDate,
+  serializeInvoice,
+} from "@/lib/invoicing";
 import { connectToDatabase } from "@/lib/mongoose";
 import { notifyOverdueInvoices } from "@/lib/notifications";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
@@ -109,12 +116,9 @@ export async function GET(request: NextRequest) {
   if (tenantId) filter.tenantId = tenantId;
   if (propertyId) filter.propertyId = propertyId;
   if (leaseId) filter.leaseId = leaseId;
-  if (status === "overdue") {
-    filter.status = "pending";
-    filter.dueDate = { $lt: now };
-  } else if (status) {
-    filter.status = status;
-  }
+  // `pending`/`new` are equivalent open states (R1); `overdue` is derived.
+  const statusFilter = invoiceStatusFilter(status, now);
+  if (statusFilter) Object.assign(filter, statusFilter);
 
   if (status === "overdue") {
     // Lazy catch-up sweep: scope follows the actor (not the query filters, so
@@ -188,9 +192,18 @@ export async function POST(request: NextRequest) {
   const actor = await resolveInvoiceActor(request, "invoice:manage");
   if (actor instanceof NextResponse) return actor;
 
-  const period = currentPeriod();
   const now = new Date();
-  const status = parsed.data.status ?? "pending";
+  // Billed month: chosen on the form (calendar), defaulting to this month.
+  const period = parsed.data.period ?? currentPeriod(now);
+  if (isFuturePeriod(period, now)) {
+    return NextResponse.json({ error: "Cannot bill a future month" }, { status: 400 });
+  }
+  const due = resolveDueDate(period, parsed.data.dueDate);
+  if (!due.ok) return NextResponse.json({ error: due.error }, { status: 400 });
+  // A draft is a template: no number, no issue date, not payable, hidden from
+  // tenants. Anything else issues immediately (R1 writers emit `pending`).
+  const isDraft = (parsed.data.status ?? "draft") === "draft";
+  const status = isDraft ? "draft" : ISSUED_INVOICE_STATUS;
 
   let derived: {
     tenantId: string;
@@ -309,6 +322,8 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    // Manual split so staff never double-count: rent = amount - service charge.
+    const serviceChargeAmount = parsed.data.serviceChargeAmount ?? 0;
     derived = {
       tenantId,
       propertyId,
@@ -317,8 +332,8 @@ export async function POST(request: NextRequest) {
       billingAccountId: "",
       billingAdminId: "",
       amountDue,
-      rentAmount: amountDue,
-      serviceChargeAmount: 0,
+      rentAmount: amountDue - serviceChargeAmount,
+      serviceChargeAmount,
       rentIncludesServiceCharge: false,
       serviceFeeItems: [],
     };
@@ -330,9 +345,12 @@ export async function POST(request: NextRequest) {
 
   let invoiceNumber = "";
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    invoiceNumber = await nextInvoiceNumber(derived.ownerId, period, {
-      billingAccountId: derived.billingAccountId,
-    });
+    // Numbers are reserved only when issuing; drafts stay number-less.
+    invoiceNumber = isDraft
+      ? ""
+      : await nextInvoiceNumber(derived.ownerId, period, {
+          billingAccountId: derived.billingAccountId,
+        });
     try {
       const invoice = await Invoice.create({
         invoiceNumber,
@@ -348,7 +366,8 @@ export async function POST(request: NextRequest) {
         amountDue: derived.amountDue,
         amountPaid: 0,
         status,
-        dueDate: computeDueDate(period),
+        dueDate: due.dueDate,
+        issuedAt: isDraft ? null : now,
         method: parsed.data.method,
         notes: parsed.data.notes,
         rentAmount: derived.rentAmount,

@@ -1,49 +1,15 @@
 import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { type InvoiceActor, readJsonBody, resolveInvoiceActor } from "@/app/api/v1/_helpers";
-import { canDelete, serializeInvoice } from "@/lib/invoicing";
+import { readJsonBody, resolveInvoiceActor } from "@/app/api/v1/_helpers";
+import { invoiceInScope } from "@/app/api/v1/invoices/_scope";
+import { canDelete, isFuturePeriod, resolveDueDate, serializeInvoice } from "@/lib/invoicing";
 import { connectToDatabase } from "@/lib/mongoose";
 import { asSoftDeleteModel } from "@/lib/mongoose-soft-delete";
 import { requirePermission } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { invoiceUpdate } from "@/lib/schemas";
 import { Invoice } from "@/models/Invoice";
-
-function adminScopeMatches(
-  doc: { propertyId: string; unitId?: string; tenantId?: string },
-  actor: InvoiceActor,
-): boolean {
-  const propMatch = actor.propertyScopeIds.includes(doc.propertyId);
-  const unitMatch = doc.unitId && actor.assignedUnitIds.includes(doc.unitId);
-  const tenantMatch = doc.tenantId && actor.assignedTenantIds.includes(doc.tenantId);
-  return Boolean(propMatch || unitMatch || tenantMatch);
-}
-
-function invoiceInScope(
-  doc: { ownerId: string; propertyId: string; unitId?: string; tenantId?: string },
-  actor: InvoiceActor,
-): boolean {
-  if (actor.role === "system-admin") return true;
-  if (actor.role === "custodian") {
-    if (actor.staffAssignmentBacked) {
-      return adminScopeMatches(doc, actor);
-    }
-    return doc.ownerId === actor.managedByOwnerId;
-  }
-  if (actor.role === "caretaker") {
-    if (actor.staffAssignmentBacked) {
-      return adminScopeMatches(doc, actor);
-    }
-    return (
-      doc.ownerId === actor.managedByOwnerId && actor.assignedPropertyIds.includes(doc.propertyId)
-    );
-  }
-  if (actor.role === "admin") {
-    return adminScopeMatches(doc, actor);
-  }
-  return false;
-}
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
@@ -98,8 +64,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   });
   if (resourceAuthError) return resourceAuthError;
 
-  if (invoice.status === "paid" || invoice.status === "void") {
-    return NextResponse.json({ error: "Paid or void invoices cannot be edited" }, { status: 409 });
+  // Drafts are the only editable state: an issued invoice is immutable
+  // (record a payment or void it instead).
+  if (invoice.status !== "draft") {
+    return NextResponse.json(
+      { error: "Only draft invoices can be edited. Issued invoices can be paid or voided." },
+      { status: 409 },
+    );
   }
 
   const body = await readJsonBody(request);
@@ -111,18 +82,65 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     );
   }
 
+  if (parsed.data.status !== undefined && parsed.data.status !== "draft") {
+    return NextResponse.json(
+      { error: "Use Issue to issue a draft; status cannot be changed by editing" },
+      { status: 409 },
+    );
+  }
+
+  const period = parsed.data.period ?? invoice.period;
+  if (parsed.data.period !== undefined && isFuturePeriod(period)) {
+    return NextResponse.json({ error: "Cannot bill a future month" }, { status: 400 });
+  }
+
   const updateData: Record<string, unknown> = {};
-  if (parsed.data.status !== undefined) updateData.status = parsed.data.status;
-  if (parsed.data.amountDue !== undefined) updateData.amountDue = parsed.data.amountDue;
+  if (parsed.data.period !== undefined) updateData.period = period;
+  if (parsed.data.dueDate !== undefined || parsed.data.period !== undefined) {
+    const due = resolveDueDate(period, parsed.data.dueDate);
+    if (!due.ok) return NextResponse.json({ error: due.error }, { status: 400 });
+    updateData.dueDate = due.dueDate;
+  }
+  const amountDue = parsed.data.amountDue ?? invoice.amountDue;
+  if (parsed.data.amountDue !== undefined) updateData.amountDue = amountDue;
+  if (parsed.data.serviceChargeAmount !== undefined || parsed.data.amountDue !== undefined) {
+    if (invoice.leaseId) {
+      if (parsed.data.serviceChargeAmount !== undefined) {
+        return NextResponse.json(
+          { error: "The service charge is derived from the lease's unit" },
+          { status: 400 },
+        );
+      }
+      // Lease drafts keep their snapshot split; scale rent to the new total.
+      const serviceCharge = Math.min(invoice.serviceChargeAmount ?? 0, amountDue);
+      updateData.serviceChargeAmount = serviceCharge;
+      updateData.rentAmount = amountDue - serviceCharge;
+    } else {
+      const serviceCharge =
+        parsed.data.serviceChargeAmount ?? Math.min(invoice.serviceChargeAmount ?? 0, amountDue);
+      if (serviceCharge > amountDue) {
+        return NextResponse.json(
+          { error: "Service charge cannot exceed the amount due" },
+          { status: 400 },
+        );
+      }
+      updateData.serviceChargeAmount = serviceCharge;
+      updateData.rentAmount = amountDue - serviceCharge;
+    }
+  }
   if (parsed.data.method !== undefined) updateData.method = parsed.data.method;
   if (parsed.data.notes !== undefined) updateData.notes = parsed.data.notes;
 
-  const updated = await Invoice.findOneAndUpdate({ _id: id }, updateData, {
+  // Guarded on draft so a concurrent issue cannot be overwritten.
+  const updated = await Invoice.findOneAndUpdate({ _id: id, status: "draft" }, updateData, {
     new: true,
     runValidators: true,
   }).lean();
   if (!updated) {
-    return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "The invoice was issued by another request; reload and try again" },
+      { status: 409 },
+    );
   }
 
   return NextResponse.json({

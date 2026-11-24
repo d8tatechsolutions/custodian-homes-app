@@ -31,7 +31,7 @@ import type { DashNavItem } from "@/config/dashboardNav";
 import { useAmounts } from "@/hooks/use-amounts";
 import { useInvoiceMutations, useStaffInvoices } from "@/hooks/use-invoices";
 import { formatKES, formatPeriod } from "@/lib/format";
-import { currentPeriod } from "@/lib/invoicing";
+import { currentPeriod, invoiceStatusLabel, isOpenInvoiceStatus } from "@/lib/invoicing";
 import type { InvoiceInput, InvoiceMarkPaidInput, InvoiceUpdate } from "@/lib/schemas";
 import { matchesQuery } from "@/lib/search";
 import type { Invoice } from "@/types/invoicing";
@@ -41,7 +41,23 @@ import { InvoiceTable } from "./InvoiceTable";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
 import { VoidConfirmDialog } from "./VoidConfirmDialog";
 
-type StatusTab = "all" | "pending" | "overdue" | "paid" | "draft" | "void";
+export type StatusTab = "all" | "draft" | "unpaid" | "overdue" | "paid" | "void";
+
+const STATUS_TABS: { key: StatusTab; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "draft", label: "Draft" },
+  { key: "unpaid", label: "Unpaid" },
+  { key: "overdue", label: "Overdue" },
+  { key: "paid", label: "Paid" },
+  { key: "void", label: "Void" },
+];
+
+/** Whether an invoice belongs to a status tab (unpaid = issued, not yet past due). */
+export function matchesStatusTab(status: string, tab: StatusTab): boolean {
+  if (tab === "all") return true;
+  if (tab === "unpaid") return isOpenInvoiceStatus(status);
+  return status === tab;
+}
 
 interface InvoicesManagerProps {
   nav: DashNavItem[];
@@ -57,8 +73,17 @@ export const InvoicesManager = (props: InvoicesManagerProps) => {
   const [period, setPeriod] = useState(currentPeriod());
   const { invoices, loading, error, refetch } = useStaffInvoices({ period });
   const { amounts, loading: amountsLoading, error: amountsError } = useAmounts({ period });
-  const { createInvoice, updateInvoice, markPaid, voidInvoice, deleteInvoice, generate, pending } =
-    useInvoiceMutations();
+  const {
+    createInvoice,
+    updateInvoice,
+    markPaid,
+    voidInvoice,
+    issueInvoice,
+    duplicateInvoice,
+    deleteInvoice,
+    generate,
+    pending,
+  } = useInvoiceMutations();
 
   const [tab, setTab] = useState<StatusTab>("all");
   const [query, setQuery] = useState("");
@@ -69,21 +94,25 @@ export const InvoicesManager = (props: InvoicesManagerProps) => {
   const [deleting, setDeleting] = useState<Invoice | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
 
-  const counts: Record<StatusTab, number> = {
-    all: invoices.length,
-    pending: invoices.filter((i) => i.status === "pending").length,
-    overdue: invoices.filter((i) => i.status === "overdue").length,
-    paid: invoices.filter((i) => i.status === "paid").length,
-    draft: invoices.filter((i) => i.status === "draft").length,
-    void: invoices.filter((i) => i.status === "void").length,
-  };
+  const counts = Object.fromEntries(
+    STATUS_TABS.map(({ key }) => [
+      key,
+      invoices.filter((i) => matchesStatusTab(i.status, key)).length,
+    ]),
+  ) as Record<StatusTab, number>;
 
   const visible = useMemo(
     () =>
       invoices
-        .filter((i) => tab === "all" || i.status === tab)
+        .filter((i) => matchesStatusTab(i.status, tab))
         .filter((i) =>
-          matchesQuery(query, i.invoiceNumber, i.period, i.status, tenantNames?.[i.tenantId]),
+          matchesQuery(
+            query,
+            i.invoiceNumber,
+            i.period,
+            invoiceStatusLabel(i.status),
+            tenantNames?.[i.tenantId],
+          ),
         ),
     [invoices, tab, query, tenantNames],
   );
@@ -112,14 +141,17 @@ export const InvoicesManager = (props: InvoicesManagerProps) => {
   ) => {
     try {
       if (editingInvoice) {
-        await updateInvoice(editingInvoice._id, input);
-        toast.success("Invoice updated", {
-          description: `${editingInvoice.invoiceNumber} was saved.`,
+        await updateInvoice(editingInvoice._id, input as InvoiceUpdate);
+        toast.success("Draft saved", {
+          description: `The draft for ${formatPeriod(editingInvoice.period)} was updated.`,
         });
       } else {
-        await createInvoice(input);
-        toast.success("Invoice created", {
-          description: "The invoice has been issued.",
+        const created = await createInvoice(input as InvoiceInput);
+        toast.success(created.status === "draft" ? "Draft saved" : "Invoice issued", {
+          description:
+            created.status === "draft"
+              ? "It gets its number when you issue it."
+              : `${created.invoiceNumber} is now Unpaid.`,
         });
       }
       setCreateOpen(false);
@@ -160,12 +192,39 @@ export const InvoicesManager = (props: InvoicesManagerProps) => {
     }
   };
 
+  const handleIssue = async (invoice: Invoice) => {
+    try {
+      const issued = await issueInvoice(invoice._id);
+      toast.success("Invoice issued", {
+        description: `${issued.invoiceNumber} is now Unpaid.`,
+      });
+      refetch();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      toast.error("Could not issue invoice", { description: message });
+    }
+  };
+
+  const handleDuplicate = async (invoice: Invoice) => {
+    try {
+      // The copy is billed for the month currently selected on this page.
+      await duplicateInvoice(invoice._id, period);
+      toast.success("Draft created", {
+        description: `Copied as a draft for ${formatPeriod(period)}.`,
+      });
+      refetch();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      toast.error("Could not duplicate invoice", { description: message });
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleting) return;
     try {
       await deleteInvoice(deleting._id);
       toast.success("Draft deleted", {
-        description: `${deleting.invoiceNumber} was removed.`,
+        description: `The draft for ${formatPeriod(deleting.period)} was removed.`,
       });
       setDeleting(null);
       refetch();
@@ -198,34 +257,51 @@ export const InvoicesManager = (props: InvoicesManagerProps) => {
     if (invoice.status === "void") {
       return <span className="text-xs text-muted-foreground">Voided</span>;
     }
+    if (!canManage) return null;
+    // Drafts are templates: edit, issue, copy or delete. They are never paid directly.
+    if (invoice.status === "draft") {
+      return (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => openEdit(invoice)}>
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            className="rounded-full"
+            disabled={pending}
+            onClick={() => void handleIssue(invoice)}
+          >
+            Issue
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => void handleDuplicate(invoice)}
+          >
+            Duplicate
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setDeleting(invoice)}
+          >
+            Delete
+          </Button>
+        </div>
+      );
+    }
+    // Issued (Unpaid / Overdue): record a payment or void.
     return (
       <div className="flex justify-end gap-2">
-        {canManage && invoice.status === "draft" && (
-          <>
-            <Button size="sm" variant="outline" onClick={() => openEdit(invoice)}>
-              Edit
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-destructive hover:text-destructive"
-              onClick={() => setDeleting(invoice)}
-            >
-              Delete
-            </Button>
-          </>
-        )}
-        {canManage && (
-          <Button size="sm" className="rounded-full" onClick={() => setRecording(invoice)}>
-            <Plus className="h-4 w-4" />
-            Record
-          </Button>
-        )}
-        {canManage && (
-          <Button size="sm" variant="outline" onClick={() => setVoiding(invoice)}>
-            Void
-          </Button>
-        )}
+        <Button size="sm" className="rounded-full" onClick={() => setRecording(invoice)}>
+          <Plus className="h-4 w-4" />
+          Record
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setVoiding(invoice)}>
+          Void
+        </Button>
       </div>
     );
   };
@@ -301,10 +377,10 @@ export const InvoicesManager = (props: InvoicesManagerProps) => {
       <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
         <Tabs value={tab} onValueChange={(v) => setTab(v as StatusTab)}>
           <TabsList>
-            {(["all", "pending", "overdue", "paid", "draft", "void"] as const).map((t) => (
-              <TabsTrigger key={t} value={t} className="capitalize">
-                {t}
-                <span className="ml-1.5 text-xs text-muted-foreground">{counts[t]}</span>
+            {STATUS_TABS.map(({ key, label }) => (
+              <TabsTrigger key={key} value={key}>
+                {label}
+                <span className="ml-1.5 text-xs text-muted-foreground">{counts[key]}</span>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -436,7 +512,7 @@ export const InvoicesManager = (props: InvoicesManagerProps) => {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleting?.invoiceNumber ?? "this draft"}?</AlertDialogTitle>
+            <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
             <AlertDialogDescription>
               Only draft invoices can be deleted. This cannot be undone.
             </AlertDialogDescription>

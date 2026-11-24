@@ -520,7 +520,7 @@ export async function notifyOverdueInvoices(
 ): Promise<boolean> {
   try {
     const invoices = await Invoice.find({
-      status: "pending",
+      status: { $in: ["pending", "new"] },
       dueDate: { $lt: now },
       ...scope,
     })

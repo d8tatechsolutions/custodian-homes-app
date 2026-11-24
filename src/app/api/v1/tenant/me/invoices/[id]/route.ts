@@ -3,7 +3,12 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody, resolveTenantActor, resolveTenantIds } from "@/app/api/v1/_helpers";
 import { accrueCommissionForSettledInvoice } from "@/lib/commission";
-import { canMarkPaid, resolveManualPayment, serializeInvoice } from "@/lib/invoicing";
+import {
+  canMarkPaid,
+  OPEN_INVOICE_STATUSES,
+  resolveManualPayment,
+  serializeInvoice,
+} from "@/lib/invoicing";
 import { connectToDatabase } from "@/lib/mongoose";
 import { notifyInvoicePaid } from "@/lib/notifications";
 import { requirePermission } from "@/lib/permissions";
@@ -26,7 +31,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   await connectToDatabase();
 
   const tenantIds = await resolveTenantIds(userId);
-  const invoice = await Invoice.findOne({ _id: id, tenantId: { $in: tenantIds } }).lean();
+  // Drafts are templates and never visible to tenants.
+  const invoice = await Invoice.findOne({
+    _id: id,
+    tenantId: { $in: tenantIds },
+    status: { $ne: "draft" },
+  }).lean();
   if (!invoice) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
@@ -55,14 +65,26 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   await connectToDatabase();
 
   const tenantIds = await resolveTenantIds(userId);
-  const invoice = await Invoice.findOne({ _id: id, tenantId: { $in: tenantIds } }).lean();
+  // Drafts are templates and never visible to tenants.
+  const invoice = await Invoice.findOne({
+    _id: id,
+    tenantId: { $in: tenantIds },
+    status: { $ne: "draft" },
+  }).lean();
   if (!invoice) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
 
   if (!canMarkPaid(invoice.status)) {
     return NextResponse.json(
-      { error: invoice.status === "paid" ? "Invoice is already paid" : "Invoice is void" },
+      {
+        error:
+          invoice.status === "paid"
+            ? "Invoice is already paid"
+            : invoice.status === "draft"
+              ? "Issue the draft before recording a payment"
+              : "Invoice is void",
+      },
       { status: 409 },
     );
   }
@@ -112,7 +134,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const updated = await Invoice.findOneAndUpdate(
     {
       _id: id,
-      status: { $in: ["pending", "draft"] },
+      status: { $in: [...OPEN_INVOICE_STATUSES] },
       // Optimistic guard against a concurrent payment changing the balance.
       amountPaid: invoice.amountPaid ?? 0,
     },

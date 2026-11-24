@@ -225,7 +225,9 @@ export async function applyProviderPayment(
   }
 
   const updated = await Invoice.findOneAndUpdate(
-    { _id: invoice._id, status: { $in: ["pending", "draft"] } },
+    // R1: `pending` and `new` are equivalent open states; `draft` stays
+    // tolerated here until R3 narrows writers (plan §2.5).
+    { _id: invoice._id, status: { $in: ["pending", "new", "draft"] } },
     {
       $set: {
         status: "paid",
