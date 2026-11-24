@@ -17,6 +17,9 @@ import { TENANT_SAFE_FIELDS, Tenant } from "@/models/Tenant";
 import { Unit } from "@/models/Unit";
 import { User } from "@/models/User";
 
+const INVITE_EMAIL_WARNING =
+  "Account created, but the invitation email could not be sent. Contact support.";
+
 interface UnitHint {
   _id: string;
   name: string;
@@ -309,6 +312,7 @@ export async function POST(request: NextRequest) {
   }
 
   let userId = "";
+  let inviteEmailSent: boolean | undefined;
   if (existingUser) {
     const existingIsUsable = existingUser.isActive !== false && existingUser.isVerified !== false;
     if (existingIsUsable) {
@@ -329,7 +333,13 @@ export async function POST(request: NextRequest) {
           },
         },
       );
-      await sendInviteEmail(email, parsed.data.name, "tenant", verificationToken);
+      inviteEmailSent = await sendInviteEmail(email, parsed.data.name, "tenant", verificationToken);
+      if (!inviteEmailSent) {
+        console.error("[invite] Invitation email could not be sent", {
+          role: "tenant",
+          recipient: email,
+        });
+      }
     }
   }
 
@@ -387,10 +397,23 @@ export async function POST(request: NextRequest) {
       }),
     );
 
-    await sendInviteEmail(email, parsed.data.name, "tenant", verificationToken);
+    inviteEmailSent = await sendInviteEmail(email, parsed.data.name, "tenant", verificationToken);
+    if (!inviteEmailSent) {
+      console.error("[invite] Invitation email could not be sent", {
+        role: "tenant",
+        recipient: email,
+      });
+    }
   }
 
   const created = await Tenant.findById(tenant._id).select(TENANT_SAFE_FIELDS).lean();
 
-  return NextResponse.json({ data: created }, { status: 201 });
+  return NextResponse.json(
+    {
+      data: created,
+      ...(inviteEmailSent === undefined ? {} : { emailSent: inviteEmailSent }),
+      ...(inviteEmailSent === false ? { warning: INVITE_EMAIL_WARNING } : {}),
+    },
+    { status: 201 },
+  );
 }

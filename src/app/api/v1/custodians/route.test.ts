@@ -205,4 +205,76 @@ describe("POST /api/v1/custodians", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("keeps 201 and adds a warning when the invite email fails", async () => {
+    user.findById.mockReturnValue(buildQuery(makeUser({ _id: ADMIN_ID, role: "system-admin" })));
+    user.findOne
+      .mockReturnValueOnce(buildQuery(makeUser({ _id: OWNER_ID, role: "admin" })))
+      .mockReturnValue(buildQuery(null));
+    user.create.mockResolvedValue(
+      makeUser({
+        _id: makeObjectId("new-custodian"),
+        role: "custodian",
+        name: "New Custodian",
+        email: "new-custodian@keja.co",
+        isActive: false,
+      }),
+    );
+    vi.mocked(sendInviteEmail).mockResolvedValue(false);
+
+    const res = await POST(
+      buildRequest("/api/v1/custodians", {
+        method: "POST",
+        token: signToken(ADMIN_ID),
+        body: {
+          email: "new-custodian@keja.co",
+          name: "New Custodian",
+          ownerId: OWNER_ID,
+        },
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    const body = await json(res);
+    expect(body.emailSent).toBe(false);
+    expect(body.warning).toBe(
+      "Account created, but the invitation email could not be sent. Contact support.",
+    );
+    expect(body.data).toBeDefined();
+  });
+
+  it("returns 201 with emailSent true and no warning when the invite email succeeds", async () => {
+    user.findById.mockReturnValue(buildQuery(makeUser({ _id: ADMIN_ID, role: "system-admin" })));
+    user.findOne
+      .mockReturnValueOnce(buildQuery(makeUser({ _id: OWNER_ID, role: "admin" })))
+      .mockReturnValue(buildQuery(null));
+    user.create.mockResolvedValue(
+      makeUser({
+        _id: makeObjectId("new-custodian-ok"),
+        role: "custodian",
+        name: "New Custodian",
+        email: "new-custodian-ok@keja.co",
+        isActive: false,
+      }),
+    );
+    vi.mocked(sendInviteEmail).mockResolvedValue(true);
+
+    const res = await POST(
+      buildRequest("/api/v1/custodians", {
+        method: "POST",
+        token: signToken(ADMIN_ID),
+        body: {
+          email: "new-custodian-ok@keja.co",
+          name: "New Custodian",
+          ownerId: OWNER_ID,
+        },
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    const body = await json(res);
+    expect(body.emailSent).toBe(true);
+    expect(body.warning).toBeUndefined();
+    expect(body.data).toBeDefined();
+  });
 });

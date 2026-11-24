@@ -14,6 +14,9 @@ import { createPhoneOnlyAccount, resolveUserByContact } from "@/lib/user-identit
 import { Property } from "@/models/Property";
 import { User } from "@/models/User";
 
+const INVITE_EMAIL_WARNING =
+  "Account created, but the invitation email could not be sent. Contact support.";
+
 const custodianInviteSchema = z
   .object({
     email: z.string().trim().toLowerCase().email().optional(),
@@ -271,7 +274,13 @@ export async function POST(request: NextRequest) {
         },
       },
     );
-    await sendInviteEmail(email, displayName, "custodian", verificationToken);
+    const emailSent = await sendInviteEmail(email, displayName, "custodian", verificationToken);
+    if (!emailSent) {
+      console.error("[invite] Invitation email could not be sent", {
+        role: "custodian",
+        recipient: email,
+      });
+    }
     await audit("custodian.invited", String(existing._id), {
       managedByOwnerId: boundOwnerId,
       name: displayName,
@@ -280,6 +289,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         invited: true,
+        emailSent,
+        ...(emailSent ? {} : { warning: INVITE_EMAIL_WARNING }),
         data: {
           id: String(existing._id),
           name: displayName,
@@ -346,7 +357,13 @@ export async function POST(request: NextRequest) {
     }),
   );
 
-  await sendInviteEmail(email, created.name, "custodian", verificationToken);
+  const emailSent = await sendInviteEmail(email, created.name, "custodian", verificationToken);
+  if (!emailSent) {
+    console.error("[invite] Invitation email could not be sent", {
+      role: "custodian",
+      recipient: email,
+    });
+  }
   await audit("custodian.invited", String(created._id), {
     managedByOwnerId: boundOwnerId,
     name: created.name,
@@ -355,6 +372,8 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(
     {
       invited: true,
+      emailSent,
+      ...(emailSent ? {} : { warning: INVITE_EMAIL_WARNING }),
       data: {
         id: String(created._id),
         name: created.name,

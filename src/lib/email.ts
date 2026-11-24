@@ -37,33 +37,57 @@ function unquote(value: string): string {
   return value;
 }
 
+function emailDomain(value: string): string {
+  const match = value.match(/@([^\s>]+)/);
+  return match?.[1]?.toLowerCase() ?? "";
+}
+
 function createTransporter() {
-  if (!isEmailConfigured()) {
+  const host = process.env.EMAIL_HOST;
+  if (!isEmailConfigured() || !host) {
     console.warn(
       "[email] SMTP is not configured. Email delivery is disabled for this environment.",
     );
     return null;
   }
 
-  const host = process.env.EMAIL_HOST ?? "smtp.gmail.com";
-  const port = parseInt(process.env.EMAIL_PORT ?? "587", 10);
+  const port = Number(process.env.EMAIL_PORT ?? "587");
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(
+      "[email] EMAIL_PORT must be an integer between 1 and 65535; email delivery is disabled.",
+    );
+    return null;
+  }
+
   const secure = process.env.EMAIL_SECURE === "true" || port === 465;
   const user = unquote(process.env.EMAIL_USER ?? "");
   const pass = unquote(process.env.EMAIL_PASS ?? "");
 
-  console.log("[email] Config:", { host, port, secure, user, pass: `${pass.slice(0, 3)}***` });
+  if (process.env.EMAIL_SECURE === "true" && port !== 465) {
+    console.warn(
+      "[email] EMAIL_SECURE=true with a port other than 465; implicit TLS on this port may fail. Prefer port 465 or leave EMAIL_SECURE unset.",
+    );
+  }
+
+  const from = process.env.EMAIL_FROM;
+  if (from) {
+    const fromDomain = emailDomain(unquote(from));
+    const userDomain = emailDomain(user);
+    if (fromDomain && userDomain && fromDomain !== userDomain) {
+      console.warn(
+        "[email] EMAIL_FROM domain differs from EMAIL_USER domain; check sender alignment with your provider.",
+      );
+    }
+  }
 
   return nodemailer.createTransport({
     host,
     port,
     secure,
-    requireTLS: false,
+    requireTLS: port !== 465,
     auth: {
       user,
       pass,
-    },
-    tls: {
-      rejectUnauthorized: false,
     },
     pool: false,
     maxConnections: 1,
@@ -84,6 +108,20 @@ export interface EmailOptions {
   html: string;
   text?: string;
   replyTo?: string;
+}
+
+function logEmailSendFailure(options: EmailOptions, error: unknown): void {
+  const details: Record<string, string> = {
+    recipient: options.to,
+    subject: options.subject,
+  };
+  if (error && typeof error === "object") {
+    const smtpError = error as { code?: unknown; response?: unknown; command?: unknown };
+    if (typeof smtpError.code === "string") details.code = smtpError.code;
+    if (typeof smtpError.response === "string") details.response = smtpError.response;
+    if (typeof smtpError.command === "string") details.command = smtpError.command;
+  }
+  console.error("[email] Send failed", details);
 }
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
@@ -109,7 +147,7 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
     console.log("Email sent:", info.messageId);
     return true;
   } catch (error) {
-    console.error("Email sending failed:", error);
+    logEmailSendFailure(options, error);
     return false;
   }
 }
@@ -123,9 +161,9 @@ const BORDER_COLOR = "#e2e8f0";
 const TEXT_PRIMARY = "#1e293b";
 const TEXT_SECONDARY = "#475569";
 
-function createEmailTemplate(content: string, preheader?: string): string {
+function createEmailTemplate(content: string, recipientEmail: string, preheader?: string): string {
   const preheaderText = preheader
-    ? `<span style="display: none; max-height: 0; overflow: hidden; color: transparent; mso-hide: all; font-size: 1px; line-height: 1px;">${preheader}</span>`
+    ? `<span style="display: none; max-height: 0; overflow: hidden; color: transparent; mso-hide: all; font-size: 1px; line-height: 1px;">${escapeHtml(preheader)}</span>`
     : "";
 
   return `
@@ -201,7 +239,7 @@ function createEmailTemplate(content: string, preheader?: string): string {
   </table>
 </body>
 </html>
-  `.replace("{{EMAIL}}", ""); // Will be replaced per-email
+  `.replace("{{EMAIL}}", () => escapeHtml(recipientEmail));
 }
 
 function createVerificationContent(name: string): string {
@@ -246,9 +284,15 @@ function createWelcomeContent(name: string, role: string): string {
   `;
 }
 
-function renderTemplate(content: string, url: string, preheader?: string): string {
-  const filledContent = content.replace(/{{VERIFY_URL}}|{{RESET_URL}}|{{APP_URL}}/g, url);
-  return createEmailTemplate(filledContent, preheader);
+function renderTemplate(
+  content: string,
+  url: string,
+  recipientEmail: string,
+  preheader?: string,
+): string {
+  const safeUrl = escapeHtml(url);
+  const filledContent = content.replace(/{{VERIFY_URL}}|{{RESET_URL}}|{{APP_URL}}/g, () => safeUrl);
+  return createEmailTemplate(filledContent, recipientEmail, preheader);
 }
 
 export interface SendNotificationEmailOptions {
@@ -268,7 +312,7 @@ export interface SendNotificationEmailOptions {
 export async function sendNotificationEmail(
   options: SendNotificationEmailOptions,
 ): Promise<boolean> {
-  const html = renderTemplate(options.content, options.linkUrl, options.preheader);
+  const html = renderTemplate(options.content, options.linkUrl, options.to, options.preheader);
   return sendEmail({
     to: options.to,
     subject: uniqueSubject(options.subjectPrefix),
@@ -288,11 +332,11 @@ export function createInvoicePaidContent(input: NotificationLeadContentInput): s
   const amount = formatKES(input.amountPaid ?? input.amountDue ?? 0);
   return `
     <p style="margin: 0 0 16px; font-size: 16px; color: ${TEXT_PRIMARY}; line-height: 1.6;">Hi there,</p>
-    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">We're confirming receipt of your payment of <strong>${amount}</strong> for <strong>${formatPeriod(input.period)}</strong>.</p>
+    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">We're confirming receipt of your payment of <strong>${amount}</strong> for <strong>${escapeHtml(formatPeriod(input.period))}</strong>.</p>
     <div style="text-align: center; margin: 32px 0;">
       <a href="{{APP_URL}}" style="display: inline-block; background: linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_COLOR_LIGHT} 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 10px; font-weight: 600; font-size: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">View Invoice</a>
     </div>
-    <p style="margin: 24px 0 0; font-size: 14px; color: ${SECONDARY_COLOR}; line-height: 1.6;">Invoice <strong>${escapeHtml(input.invoiceNumber ?? "")}</strong> · ${amount} · ${formatPeriod(input.period)}</p>
+    <p style="margin: 24px 0 0; font-size: 14px; color: ${SECONDARY_COLOR}; line-height: 1.6;">Invoice <strong>${escapeHtml(input.invoiceNumber ?? "")}</strong> · ${amount} · ${escapeHtml(formatPeriod(input.period))}</p>
   `;
 }
 
@@ -300,7 +344,7 @@ export function createInvoicePaidStaffContent(input: NotificationLeadContentInpu
   const amount = formatKES(input.amountPaid ?? input.amountDue ?? 0);
   return `
     <p style="margin: 0 0 16px; font-size: 16px; color: ${TEXT_PRIMARY}; line-height: 1.6;">Hi there,</p>
-    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">A payment of <strong>${amount}</strong> was recorded for invoice <strong>${escapeHtml(input.invoiceNumber ?? "")}</strong> for <strong>${formatPeriod(input.period)}</strong>.</p>
+    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">A payment of <strong>${amount}</strong> was recorded for invoice <strong>${escapeHtml(input.invoiceNumber ?? "")}</strong> for <strong>${escapeHtml(formatPeriod(input.period))}</strong>.</p>
     <div style="text-align: center; margin: 32px 0;">
       <a href="{{APP_URL}}" style="display: inline-block; background: linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_COLOR_LIGHT} 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 10px; font-weight: 600; font-size: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">View Invoice</a>
     </div>
@@ -311,7 +355,7 @@ export function createOverdueContent(input: NotificationLeadContentInput): strin
   const amount = formatKES(input.amountDue ?? 0);
   return `
     <p style="margin: 0 0 16px; font-size: 16px; color: ${TEXT_PRIMARY}; line-height: 1.6;">Hi there,</p>
-    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">Your invoice <strong>${escapeHtml(input.invoiceNumber ?? "")}</strong> for <strong>${formatPeriod(input.period)}</strong> (${amount}) is now overdue.</p>
+    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">Your invoice <strong>${escapeHtml(input.invoiceNumber ?? "")}</strong> for <strong>${escapeHtml(formatPeriod(input.period))}</strong> (${amount}) is now overdue.</p>
     <div style="text-align: center; margin: 32px 0;">
       <a href="{{APP_URL}}" style="display: inline-block; background: linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_COLOR_LIGHT} 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 10px; font-weight: 600; font-size: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Pay Now</a>
     </div>
@@ -395,6 +439,7 @@ export async function sendVerificationEmail(
   const html = renderTemplate(
     content,
     verifyUrl,
+    email,
     `Verify your email to activate your ${BRAND.name} account`,
   );
   const text = `Hi ${name},\n\nWelcome to ${BRAND.name}! Please verify your email by clicking this link: ${verifyUrl}\n\nThis link expires in 24 hours.\n\nIf you didn't create an account, please ignore this email.`;
@@ -414,7 +459,7 @@ export async function sendPasswordResetEmail(
 ): Promise<boolean> {
   const resetUrl = `${getAppUrl()}/auth/reset-password?token=${token}`;
   const content = createPasswordResetContent(name);
-  const html = renderTemplate(content, resetUrl, `Reset your ${BRAND.name} password`);
+  const html = renderTemplate(content, resetUrl, email, `Reset your ${BRAND.name} password`);
   const text = `Hi ${name},\n\nWe received a request to reset your password. Click this link to reset: ${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, please ignore this email.`;
 
   return sendEmail({
@@ -456,7 +501,7 @@ export async function sendInviteEmail(
     ? `${appUrl}/auth/verify?token=${token}&invited=1`
     : `${appUrl}/auth?invited=1&email=${encodeURIComponent(email)}&role=${role}`;
   const content = createInviteContent(name, role);
-  const html = renderTemplate(content, verifyUrl, `You've been invited to ${BRAND.name}`);
+  const html = renderTemplate(content, verifyUrl, email, `You've been invited to ${BRAND.name}`);
   const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
   const text = `Hi ${name},\n\nYou've been invited to ${BRAND.name} as a ${roleLabel}. Verify your email to activate your account: ${verifyUrl}\n\nIf you weren't expecting this invitation, you can safely ignore this email.`;
 
@@ -477,7 +522,8 @@ export async function sendWelcomeEmail(
   const content = createWelcomeContent(name, role);
   const html = renderTemplate(
     content,
-    `${appUrl}/dashboard`,
+    appUrl,
+    email,
     `Welcome to ${BRAND.name} - Your account is now active`,
   );
   const text = `Hi ${name},\n\nWelcome to ${BRAND.name}! Your account is now active as a ${role.charAt(0).toUpperCase() + role.slice(1)}. Access your dashboard at: ${appUrl}/dashboard`;
@@ -518,7 +564,7 @@ export async function sendContactMessage(input: ContactMessageInput): Promise<bo
   return sendEmail({
     to: BRAND.emails.support,
     replyTo: input.email,
-    subject: `[Contact] ${input.subject}`,
+    subject: `[Contact] ${sanitizeHeader(input.subject)}`,
     html,
     text,
   });

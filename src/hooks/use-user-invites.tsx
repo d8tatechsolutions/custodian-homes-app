@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { toast } from "sonner";
 
 export interface UserInviteInput {
   role: string;
@@ -15,6 +16,8 @@ export interface UserInviteResult {
   invited?: boolean;
   created?: boolean;
   temporaryPassword?: string;
+  emailSent?: boolean;
+  warning?: string;
   data?: {
     id: string;
     name: string;
@@ -42,6 +45,9 @@ export function useUserInvites() {
         const message = json.error || "Failed to create user";
         setError(message);
         throw new Error(message);
+      }
+      if (json.emailSent === false) {
+        toast.warning("Account created, but the invite email failed — contact support.");
       }
       return json as UserInviteResult;
     } finally {

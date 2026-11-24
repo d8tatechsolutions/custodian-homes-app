@@ -676,6 +676,53 @@ describe("POST /api/v1/tenants", () => {
     );
   });
 
+  it("keeps 201 and adds a warning when the invite email fails", async () => {
+    managementAssignment.find.mockReturnValue(
+      buildQuery([
+        {
+          principalUserId: OWNER_ID,
+          accessRole: "admin",
+          scopeType: "property",
+          propertyId: PROPERTY_ID,
+          permissions: ["tenant:manage", "property:read"],
+          status: "active",
+          startsAt: new Date("2026-01-01T00:00:00.000Z"),
+          endsAt: null,
+        },
+      ]),
+    );
+    user.findById.mockReturnValue(buildQuery(ownerDoc()));
+    property.findById.mockReturnValue(buildQuery(ownedProperty()));
+    tenantStub.findOne.mockReturnValue(buildQuery(null));
+    user.findOne.mockReturnValue(buildQuery(null));
+    const created = makeTenant({
+      _id: TENANT_ID,
+      propertyId: PROPERTY_ID,
+      ownerId: OWNER_ID,
+      status: "pending",
+      userId: "",
+    });
+    tenantStub.create.mockResolvedValue(created);
+    tenantStub.findById.mockReturnValue(buildQuery(created));
+    vi.mocked(sendInviteEmail).mockResolvedValue(false);
+
+    const res = await POST(
+      buildRequest("/api/v1/tenants", {
+        method: "POST",
+        token: signToken(OWNER_ID),
+        body: tenantInput,
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    const body = await json(res);
+    expect(body.emailSent).toBe(false);
+    expect(body.warning).toBe(
+      "Account created, but the invitation email could not be sent. Contact support.",
+    );
+    expect(body.data).toBeDefined();
+  });
+
   it("creates a phone-only tenant with an active verified user bound immediately", async () => {
     managementAssignment.find.mockReturnValue(
       buildQuery([
