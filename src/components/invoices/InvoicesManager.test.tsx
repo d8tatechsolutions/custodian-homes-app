@@ -50,12 +50,16 @@ const mocks = vi.hoisted(() => {
     amountsError: null as string | null,
   };
   const generate = vi.fn();
+  const issueInvoice = vi.fn();
+  const duplicateInvoice = vi.fn();
   const refetch = vi.fn();
   const toast = { success: vi.fn(), error: vi.fn() };
   return {
     invoices,
     state,
     generate,
+    issueInvoice,
+    duplicateInvoice,
     refetch,
     toast,
     useStaffInvoices: vi.fn(() => ({
@@ -75,6 +79,8 @@ const mocks = vi.hoisted(() => {
       updateInvoice: vi.fn(),
       markPaid: vi.fn(),
       voidInvoice: vi.fn(),
+      issueInvoice,
+      duplicateInvoice,
       deleteInvoice: vi.fn(),
       generate,
       pending: false,
@@ -188,11 +194,64 @@ describe("InvoicesManager", () => {
     expect(screen.getByText("INV-202609-0001")).toBeInTheDocument();
     expect(screen.getByText("INV-202609-0002")).toBeInTheDocument();
 
-    // tabs render in order: all, pending, overdue, paid, draft, void
-    await user.click(screen.getAllByRole("tab")[3]);
+    await user.click(screen.getByRole("tab", { name: /^Paid/ }));
 
     expect(screen.getByText("INV-202609-0002")).toBeInTheDocument();
     expect(screen.queryByText("INV-202609-0001")).not.toBeInTheDocument();
+  });
+
+  it("labels tabs Draft · Unpaid · Overdue · Paid · Void and groups pending and new as Unpaid", async () => {
+    const user = userEvent.setup();
+    mocks.invoices.push(
+      makeInvoice({ _id: "a", invoiceNumber: "INV-202609-0001", status: "pending" }),
+      makeInvoice({ _id: "b", invoiceNumber: "INV-202609-0002", status: "new" }),
+      makeInvoice({ _id: "c", invoiceNumber: "", status: "draft" }),
+    );
+    renderManager();
+
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.replace(/\d+$/, ""))).toEqual([
+      "All",
+      "Draft",
+      "Unpaid",
+      "Overdue",
+      "Paid",
+      "Void",
+    ]);
+    // The raw stored values are never shown.
+    expect(screen.queryByText("pending")).not.toBeInTheDocument();
+    expect(screen.queryByText("new")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /^Unpaid/ }));
+    expect(screen.getByText("INV-202609-0001")).toBeInTheDocument();
+    expect(screen.getByText("INV-202609-0002")).toBeInTheDocument();
+    expect(screen.queryByText("Draft · number on issue")).not.toBeInTheDocument();
+  });
+
+  it("offers Edit, Issue, Duplicate and Delete on a draft and never Record", async () => {
+    mocks.invoices.push(makeInvoice({ _id: "d", invoiceNumber: "", status: "draft" }));
+    renderManager();
+
+    const row = screen.getByText("Draft · number on issue").closest("tr") as HTMLElement;
+    expect(within(row).getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Issue" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Duplicate" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: /Record/ })).not.toBeInTheDocument();
+
+    mocks.issueInvoice.mockResolvedValue(
+      makeInvoice({ _id: "d", invoiceNumber: "INV-202609-0009", status: "pending" }),
+    );
+    fireEvent.click(within(row).getByRole("button", { name: "Issue" }));
+    await waitFor(() => expect(mocks.issueInvoice).toHaveBeenCalledWith("d"));
+  });
+
+  it("offers Record and Void on an unpaid invoice", () => {
+    mocks.invoices.push(makeInvoice({ _id: "u", status: "new" }));
+    renderManager();
+    const row = screen.getByText("INV-202609-0001").closest("tr") as HTMLElement;
+    expect(within(row).getByRole("button", { name: /Record/ })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Void" })).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "Issue" })).not.toBeInTheDocument();
   });
 
   it("filters invoices by the search box", async () => {
