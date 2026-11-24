@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import nodemailer from "nodemailer";
 import { BRAND, getAppUrl } from "@/lib/brand";
 import { formatKES, formatPeriod } from "./format";
@@ -42,6 +43,22 @@ function emailDomain(value: string): string {
   return match?.[1]?.toLowerCase() ?? "";
 }
 
+const FQDN_PATTERN =
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+/** Resolves EMAIL_HOST to the client identity Nodemailer sends in EHLO. */
+function resolveSmtpHello(value: string): string | null {
+  const hostname = value.trim().replace(/\.$/, "").toLowerCase();
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: rejects CR/LF and control chars in the EHLO identity.
+  if (!hostname || hostname.length > 253 || /[\r\n\u0000-\u001f]/.test(hostname)) {
+    return null;
+  }
+  const ipCore =
+    hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+  if (isIP(ipCore) !== 0) return null;
+  return FQDN_PATTERN.test(hostname) ? hostname : null;
+}
+
 function createTransporter() {
   const host = process.env.EMAIL_HOST;
   if (!isEmailConfigured() || !host) {
@@ -55,6 +72,14 @@ function createTransporter() {
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     console.error(
       "[email] EMAIL_PORT must be an integer between 1 and 65535; email delivery is disabled.",
+    );
+    return null;
+  }
+
+  const name = resolveSmtpHello(host);
+  if (!name) {
+    console.error(
+      "[email] EMAIL_HOST must be a DNS hostname (IP literals and single-label hosts are rejected); email delivery is disabled.",
     );
     return null;
   }
@@ -81,6 +106,7 @@ function createTransporter() {
   }
 
   return nodemailer.createTransport({
+    name,
     host,
     port,
     secure,
@@ -161,11 +187,11 @@ const BORDER_COLOR = "#e2e8f0";
 const TEXT_PRIMARY = "#1e293b";
 const TEXT_SECONDARY = "#475569";
 
-function createEmailTemplate(content: string, recipientEmail: string, preheader?: string): string {
-  const preheaderText = preheader
-    ? `<span style="display: none; max-height: 0; overflow: hidden; color: transparent; mso-hide: all; font-size: 1px; line-height: 1px;">${escapeHtml(preheader)}</span>`
-    : "";
+function createTextFooter(recipientEmail: string): string {
+  return `\n\nThis email was sent to ${recipientEmail}. If you didn't request this, please ignore this email or contact support at ${BRAND.emails.support}.\n\n© ${new Date().getFullYear()} ${BRAND.name}. All rights reserved.`;
+}
 
+function createEmailTemplate(content: string, recipientEmail: string): string {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -185,7 +211,6 @@ function createEmailTemplate(content: string, recipientEmail: string, preheader?
   <![endif]-->
 </head>
 <body style="margin: 0; padding: 0; background-color: ${BACKGROUND_COLOR}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
-  ${preheaderText}
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: ${BACKGROUND_COLOR};">
     <tr>
       <td align="center" style="padding: 40px 20px;">
@@ -284,15 +309,10 @@ function createWelcomeContent(name: string, role: string): string {
   `;
 }
 
-function renderTemplate(
-  content: string,
-  url: string,
-  recipientEmail: string,
-  preheader?: string,
-): string {
+function renderTemplate(content: string, url: string, recipientEmail: string): string {
   const safeUrl = escapeHtml(url);
   const filledContent = content.replace(/{{VERIFY_URL}}|{{RESET_URL}}|{{APP_URL}}/g, () => safeUrl);
-  return createEmailTemplate(filledContent, recipientEmail, preheader);
+  return createEmailTemplate(filledContent, recipientEmail);
 }
 
 export interface SendNotificationEmailOptions {
@@ -301,23 +321,22 @@ export interface SendNotificationEmailOptions {
   content: string;
   text: string;
   linkUrl: string;
-  preheader: string;
 }
 
 /**
  * Best-effort notification email. `content` must only use the `{{APP_URL}}`
  * placeholder — callers pass the absolute deep link as `linkUrl`. The subject
- * is `subjectPrefix` stamped with a UTC timestamp by `uniqueSubject`.
+ * is the sanitized `subjectPrefix` from `uniqueSubject`.
  */
 export async function sendNotificationEmail(
   options: SendNotificationEmailOptions,
 ): Promise<boolean> {
-  const html = renderTemplate(options.content, options.linkUrl, options.to, options.preheader);
+  const html = renderTemplate(options.content, options.linkUrl, options.to);
   return sendEmail({
     to: options.to,
     subject: uniqueSubject(options.subjectPrefix),
     html,
-    text: options.text,
+    text: `${options.text}${createTextFooter(options.to)}`,
   });
 }
 
@@ -420,13 +439,7 @@ export function createAnnouncementContent(input: AnnouncementContentInput): stri
 }
 
 export function uniqueSubject(subject: string): string {
-  const sanitized = sanitizeHeader(subject);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const d = new Date();
-  const stamp = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(
-    d.getUTCHours(),
-  )}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
-  return `${sanitized} [${stamp} UTC]`;
+  return sanitizeHeader(subject);
 }
 
 export async function sendVerificationEmail(
@@ -436,13 +449,12 @@ export async function sendVerificationEmail(
 ): Promise<boolean> {
   const verifyUrl = `${getAppUrl()}/auth/verify?token=${token}`;
   const content = createVerificationContent(name);
-  const html = renderTemplate(
-    content,
-    verifyUrl,
-    email,
-    `Verify your email to activate your ${BRAND.name} account`,
-  );
-  const text = `Hi ${name},\n\nWelcome to ${BRAND.name}! Please verify your email by clicking this link: ${verifyUrl}\n\nThis link expires in 24 hours.\n\nIf you didn't create an account, please ignore this email.`;
+  const html = renderTemplate(content, verifyUrl, email);
+  const text =
+    `Hi ${name},\n\nWelcome to ${BRAND.name}! We're excited to have you on board. To get started, please verify your email address: ${verifyUrl}\n\n` +
+    `This link expires in 24 hours. If it expires, you can request a new verification email from the app.\n\n` +
+    `If you didn't create an account with ${BRAND.name}, you can safely ignore this email.` +
+    createTextFooter(email);
 
   return sendEmail({
     to: email,
@@ -459,8 +471,11 @@ export async function sendPasswordResetEmail(
 ): Promise<boolean> {
   const resetUrl = `${getAppUrl()}/auth/reset-password?token=${token}`;
   const content = createPasswordResetContent(name);
-  const html = renderTemplate(content, resetUrl, email, `Reset your ${BRAND.name} password`);
-  const text = `Hi ${name},\n\nWe received a request to reset your password. Click this link to reset: ${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, please ignore this email.`;
+  const html = renderTemplate(content, resetUrl, email);
+  const text =
+    `Hi ${name},\n\nWe received a request to reset your password for your ${BRAND.name} account. Click this link to create a new password: ${resetUrl}\n\n` +
+    `Security notice: This link expires in 1 hour. If you didn't request a password reset, please ignore this email and your password will remain unchanged.` +
+    createTextFooter(email);
 
   return sendEmail({
     to: email,
@@ -470,16 +485,18 @@ export async function sendPasswordResetEmail(
   });
 }
 
+function inviteRoleCopy(role: string): string {
+  return role === "caretaker"
+    ? `You've been added as a caretaker at ${BRAND.name}. You can now help manage properties, tenants, and day-to-day operations once your account is active.`
+    : role === "custodian"
+      ? `You've been added as a custodian at ${BRAND.name}. You can now help manage properties and units on behalf of an owner once your account is active.`
+      : `You've been added as a tenant at ${BRAND.name}. You can now view your lease, invoices, and announcements once your account is active.`;
+}
+
 function createInviteContent(name: string, role: string): string {
-  const roleCopy =
-    role === "caretaker"
-      ? `You've been added as a caretaker at ${BRAND.name}. You can now help manage properties, tenants, and day-to-day operations once your account is active.`
-      : role === "custodian"
-        ? `You've been added as a custodian at ${BRAND.name}. You can now help manage properties and units on behalf of an owner once your account is active.`
-        : `You've been added as a tenant at ${BRAND.name}. You can now view your lease, invoices, and announcements once your account is active.`;
   return `
     <p style="margin: 0 0 16px; font-size: 16px; color: ${TEXT_PRIMARY}; line-height: 1.6;">Hi <strong>${escapeHtml(name)}</strong>,</p>
-    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">${roleCopy}</p>
+    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">${inviteRoleCopy(role)}</p>
     <div style="text-align: center; margin: 32px 0;">
       <a href="{{APP_URL}}" style="display: inline-block; background: linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_COLOR_LIGHT} 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 10px; font-weight: 600; font-size: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-shadow: 0 4px 14px 0 rgba(20, 62, 107, 0.4);">Verify your email</a>
     </div>
@@ -501,9 +518,12 @@ export async function sendInviteEmail(
     ? `${appUrl}/auth/verify?token=${token}&invited=1`
     : `${appUrl}/auth?invited=1&email=${encodeURIComponent(email)}&role=${role}`;
   const content = createInviteContent(name, role);
-  const html = renderTemplate(content, verifyUrl, email, `You've been invited to ${BRAND.name}`);
-  const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
-  const text = `Hi ${name},\n\nYou've been invited to ${BRAND.name} as a ${roleLabel}. Verify your email to activate your account: ${verifyUrl}\n\nIf you weren't expecting this invitation, you can safely ignore this email.`;
+  const html = renderTemplate(content, verifyUrl, email);
+  const text =
+    `Hi ${name},\n\n${inviteRoleCopy(role)}\n\n` +
+    `Verify your email using this link and activate your account. You'll then set your password and complete your profile: ${verifyUrl}\n\n` +
+    `If you weren't expecting this invitation, you can safely ignore this email.` +
+    createTextFooter(email);
 
   return sendEmail({
     to: email,
@@ -520,13 +540,12 @@ export async function sendWelcomeEmail(
 ): Promise<boolean> {
   const appUrl = getAppUrl();
   const content = createWelcomeContent(name, role);
-  const html = renderTemplate(
-    content,
-    appUrl,
-    email,
-    `Welcome to ${BRAND.name} - Your account is now active`,
-  );
-  const text = `Hi ${name},\n\nWelcome to ${BRAND.name}! Your account is now active as a ${role.charAt(0).toUpperCase() + role.slice(1)}. Access your dashboard at: ${appUrl}/dashboard`;
+  const html = renderTemplate(content, appUrl, email);
+  const text =
+    `Hi ${name},\n\nWelcome to ${BRAND.name}! Your email has been verified and your account is now active as a ${role.charAt(0).toUpperCase() + role.slice(1)}.\n\n` +
+    `You can now access your dashboard and start managing your properties, applications, and more: ${appUrl}/dashboard\n\n` +
+    `If you have any questions, our support team is here to help.` +
+    createTextFooter(email);
 
   return sendEmail({
     to: email,

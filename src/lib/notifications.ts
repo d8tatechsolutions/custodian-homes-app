@@ -59,7 +59,6 @@ export interface NotifyEmailInput {
   content: string;
   text: string;
   linkUrl: string;
-  preheader: string;
   to?: string;
 }
 
@@ -381,9 +380,11 @@ export async function notifyInvoicePaid(invoice: InvoiceLike): Promise<boolean> 
           email: {
             subjectPrefix: `Invoice ${invoiceNumber} paid - ${BRAND.name}`,
             content: createInvoicePaidContent({ invoiceNumber, period, amountDue, amountPaid }),
-            text: `Your payment of ${amount} for ${periodLabel} has been received.\n\nView your invoice: ${base}/dashboard/tenant/payments`,
+            text:
+              `Hi there,\n\nWe're confirming receipt of your payment of ${amount} for ${periodLabel}.\n\n` +
+              `Invoice ${invoiceNumber} · ${amount} · ${periodLabel}\n\n` +
+              `View your invoice: ${base}/dashboard/tenant/payments`,
             linkUrl: `${base}/dashboard/tenant/payments`,
-            preheader: "Your payment has been received",
           },
         })) && ok;
     }
@@ -459,9 +460,11 @@ export async function notifyInvoiceOverdue(invoice: InvoiceLike): Promise<boolea
           email: {
             subjectPrefix: `Invoice ${invoiceNumber} overdue - ${BRAND.name}`,
             content: createOverdueContent({ invoiceNumber, period, amountDue }),
-            text: `Your invoice ${invoiceNumber} for ${periodLabel} (${amount}) is now overdue.\n\nPay now: ${base}/dashboard/tenant/payments`,
+            text:
+              `Hi there,\n\nYour invoice ${invoiceNumber} for ${periodLabel} (${amount}) is now overdue.\n\n` +
+              `Please arrange payment as soon as possible to keep your account in good standing.\n\n` +
+              `Pay now: ${base}/dashboard/tenant/payments`,
             linkUrl: `${base}/dashboard/tenant/payments`,
-            preheader: "Your invoice is overdue",
           },
         })) && ok;
     }
@@ -555,6 +558,14 @@ export async function notifyLeaseExpiry(lease: LeaseLike, daysUntil: number): Pr
     const title = "Lease expiring soon";
     const tenantBody = `Your lease ends in ${daysUntil} ${unit}.`;
     const staffBody = `A lease ends in ${daysUntil} ${unit}.`;
+    const when = lease.endDate
+      ? new Date(lease.endDate).toLocaleDateString(undefined, {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : "soon";
+    const rent = lease.rentAmount != null ? ` (${formatKES(lease.rentAmount)}/month)` : "";
 
     let ok = true;
 
@@ -575,9 +586,10 @@ export async function notifyLeaseExpiry(lease: LeaseLike, daysUntil: number): Pr
               endDate: lease.endDate ?? undefined,
               rentAmount: lease.rentAmount,
             }),
-            text: `Your lease ends in ${daysUntil} ${unit}.\n\nView your lease details: ${base}/dashboard/tenant/payments`,
+            text:
+              `Hi there,\n\nYour lease ends in ${daysUntil} ${unit} (${when})${rent}. Let us know if you'd like to renew.\n\n` +
+              `View your lease details: ${base}/dashboard/tenant/payments`,
             linkUrl: `${base}/dashboard/tenant/payments`,
-            preheader: "Your lease is ending soon",
           },
         })) && ok;
     }
@@ -597,9 +609,10 @@ export async function notifyLeaseExpiry(lease: LeaseLike, daysUntil: number): Pr
             endDate: lease.endDate ?? undefined,
             rentAmount: lease.rentAmount,
           }),
-          text: `A lease ends in ${daysUntil} ${unit}.\n\nView your leases: ${base}/dashboard/admin/accounting`,
+          text:
+            `Hi there,\n\nA lease ends in ${daysUntil} ${unit} (${when})${rent}. Let us know if you'd like to renew.\n\n` +
+            `View your leases: ${base}/dashboard/admin/accounting`,
           linkUrl: `${base}/dashboard/admin/accounting`,
-          preheader: "A lease is ending soon",
         },
       })) && ok;
 
@@ -706,9 +719,10 @@ export async function notifyComplaintStatusChange(complaint: ComplaintLike): Pro
       email: {
         subjectPrefix: `Complaint "${sanitizeHeader(subject)}" ${status} - ${BRAND.name}`,
         content: createComplaintStatusContent({ subject, status }),
-        text: `Your complaint "${subject}" is now ${status}.`,
+        text:
+          `Hi there,\n\nYour complaint "${subject}" is now ${status}.\n\n` +
+          `View complaint: ${getAppUrl()}/dashboard/tenant/home`,
         linkUrl: `${getAppUrl()}/dashboard/tenant/home`,
-        preheader: "Your complaint status has changed",
       },
     });
   } catch (_error) {

@@ -213,6 +213,7 @@ EMAIL_PORT=587
 EMAIL_USER=your-email@gmail.com
 EMAIL_PASS=your-app-password
 EMAIL_FROM=Custodian Homes <info@custodianhomes.co.ke>
+# SMTP EHLO identity is derived from validated EMAIL_HOST (DNS hostname required; IP literals rejected); EMAIL_HELO is not used.
 
 # Paystack (test keys)
 PAYSTACK_SECRET_KEY=
