@@ -24,7 +24,9 @@
     "backfill:tasks": "tsx scripts/backfill-task-permissions.ts",
     "backfill:chat": "tsx scripts/backfill-chat-approval-state.ts",
     "backfill:user-codes": "tsx scripts/backfill-user-codes.ts",
-    "migrate:user-code-index": "tsx scripts/migrate-user-code-index.ts"
+    "migrate:user-code-index": "tsx scripts/migrate-user-code-index.ts",
+    "migrate:invoice-indexes": "tsx scripts/migrate-invoice-indexes.ts",
+    "migrate:invoices": "tsx scripts/migrate-invoice-statuses.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
