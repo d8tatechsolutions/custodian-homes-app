@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 export interface CaretakerRow {
   id: string;
@@ -25,6 +26,8 @@ export interface CaretakerInviteResult {
   linked?: boolean;
   /** One-time password for a phone-only account. */
   temporaryPassword?: string;
+  emailSent?: boolean;
+  warning?: string;
 }
 
 export function useCaretakers(ownerId?: string, enabled = true, forPropertyAssignment = false) {
@@ -96,10 +99,15 @@ export function useCaretakerMutations() {
         setError(message);
         throw new Error(message);
       }
+      if (json.emailSent === false) {
+        toast.warning("Account created, but the invite email failed — contact support.");
+      }
       return {
         member: json.data as CaretakerRow,
         linked: json.linked === true,
         temporaryPassword: typeof json.password === "string" ? json.password : undefined,
+        emailSent: typeof json.emailSent === "boolean" ? json.emailSent : undefined,
+        warning: typeof json.warning === "string" ? json.warning : undefined,
       };
     } finally {
       setPending(false);

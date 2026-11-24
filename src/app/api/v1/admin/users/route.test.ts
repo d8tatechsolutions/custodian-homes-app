@@ -7,9 +7,14 @@ import { buildQuery, getModelStubs, resetModelStubs } from "@/test/utils/model-m
 vi.mock("@/lib/mongoose", () => ({
   connectToDatabase: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("@/lib/audit", () => ({
+  writeAuditEvent: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/lib/email", () => ({ sendInviteEmail: vi.fn() }));
 vi.mock("@/models/User", () => ({ User: getModelStubs().user }));
 
-import { GET } from "@/app/api/v1/admin/users/route";
+import { GET, POST } from "@/app/api/v1/admin/users/route";
+import { sendInviteEmail } from "@/lib/email";
 
 const models = getModelStubs();
 const SYS_ADMIN_ID = makeObjectId("sysadmin");
@@ -157,5 +162,76 @@ describe("GET /api/v1/admin/users", () => {
     expect(projection).not.toContain("nationalId");
     expect(projection).not.toContain("passwordHash");
     expect(projection).not.toContain("verificationToken");
+  });
+});
+
+describe("POST /api/v1/admin/users", () => {
+  beforeEach(() => {
+    resetModelStubs();
+    process.env.ROLE_MANAGEMENT_ENABLED = "true";
+    vi.mocked(sendInviteEmail).mockReset();
+    models.user.findById.mockReturnValue(buildQuery(sysAdminDoc()));
+  });
+
+  afterEach(() => {
+    delete process.env.ROLE_MANAGEMENT_ENABLED;
+  });
+
+  it("keeps 201 and adds a warning when the invite email fails", async () => {
+    models.user.findOne.mockReturnValue(buildQuery(null));
+    models.user.create.mockResolvedValue(
+      makeUser({
+        _id: makeObjectId("new-user"),
+        role: "tenant",
+        name: "New Tenant",
+        email: "new-tenant@keja.co",
+        isActive: false,
+      }),
+    );
+    vi.mocked(sendInviteEmail).mockResolvedValue(false);
+
+    const res = await POST(
+      buildRequest("/api/v1/admin/users", {
+        method: "POST",
+        token: signToken(SYS_ADMIN_ID),
+        body: { role: "tenant", name: "New Tenant", email: "new-tenant@keja.co" },
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.emailSent).toBe(false);
+    expect(body.warning).toBe(
+      "Account created, but the invitation email could not be sent. Contact support.",
+    );
+    expect(body.data).toBeDefined();
+  });
+
+  it("returns 201 with emailSent true and no warning when the invite email succeeds", async () => {
+    models.user.findOne.mockReturnValue(buildQuery(null));
+    models.user.create.mockResolvedValue(
+      makeUser({
+        _id: makeObjectId("new-user-ok"),
+        role: "tenant",
+        name: "New Tenant",
+        email: "new-tenant-ok@keja.co",
+        isActive: false,
+      }),
+    );
+    vi.mocked(sendInviteEmail).mockResolvedValue(true);
+
+    const res = await POST(
+      buildRequest("/api/v1/admin/users", {
+        method: "POST",
+        token: signToken(SYS_ADMIN_ID),
+        body: { role: "tenant", name: "New Tenant", email: "new-tenant-ok@keja.co" },
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.emailSent).toBe(true);
+    expect(body.warning).toBeUndefined();
+    expect(body.data).toBeDefined();
   });
 });

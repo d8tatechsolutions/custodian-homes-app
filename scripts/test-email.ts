@@ -9,18 +9,13 @@ async function main() {
   const testToken = `test-token-${Date.now()}`;
 
   console.log(`Sending test verification email to: ${testEmail}`);
-  console.log(`EMAIL_HOST: ${process.env.EMAIL_HOST}`);
-  console.log(`EMAIL_PORT: ${process.env.EMAIL_PORT}`);
-  console.log(`EMAIL_USER: ${process.env.EMAIL_USER}`);
-  console.log(`EMAIL_PASS: ${process.env.EMAIL_PASS?.slice(0, 3)}***`);
 
-  try {
-    await sendVerificationEmail(testEmail, testToken, "Test User");
-    console.log("✅ Email sent successfully!");
-  } catch (error) {
-    console.error("❌ Failed to send email:", error);
+  const sent = await sendVerificationEmail(testEmail, testToken, "Test User");
+  if (!sent) {
+    console.error("❌ Email delivery failed. Check the server logs for details.");
     process.exit(1);
   }
+  console.log("✅ Email sent successfully (queued by the mail transport).");
 }
 
 main();

@@ -15,6 +15,9 @@ import { ManagementAssignment } from "@/models/ManagementAssignment";
 import { Property } from "@/models/Property";
 import { User } from "@/models/User";
 
+const INVITE_EMAIL_WARNING =
+  "Account created, but the invitation email could not be sent. Contact support.";
+
 const caretakerInviteSchema = z
   .object({
     email: z.string().trim().toLowerCase().email().optional(),
@@ -278,7 +281,13 @@ export async function POST(request: NextRequest) {
         },
       },
     );
-    await sendInviteEmail(email, displayName, "caretaker", verificationToken);
+    const emailSent = await sendInviteEmail(email, displayName, "caretaker", verificationToken);
+    if (!emailSent) {
+      console.error("[invite] Invitation email could not be sent", {
+        role: "caretaker",
+        recipient: email,
+      });
+    }
     await audit("caretaker.invited", String(existing._id), {
       managedByOwnerId: boundOwnerId,
       name: displayName,
@@ -288,6 +297,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         invited: true,
+        emailSent,
+        ...(emailSent ? {} : { warning: INVITE_EMAIL_WARNING }),
         data: {
           id: String(existing._id),
           name: displayName,
@@ -354,7 +365,13 @@ export async function POST(request: NextRequest) {
     }),
   );
 
-  await sendInviteEmail(email, created.name, "caretaker", verificationToken);
+  const emailSent = await sendInviteEmail(email, created.name, "caretaker", verificationToken);
+  if (!emailSent) {
+    console.error("[invite] Invitation email could not be sent", {
+      role: "caretaker",
+      recipient: email,
+    });
+  }
   await audit("caretaker.invited", String(created._id), {
     managedByOwnerId: boundOwnerId,
     name: created.name,
@@ -364,6 +381,8 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(
     {
       invited: true,
+      emailSent,
+      ...(emailSent ? {} : { warning: INVITE_EMAIL_WARNING }),
       data: {
         id: String(created._id),
         name: created.name,

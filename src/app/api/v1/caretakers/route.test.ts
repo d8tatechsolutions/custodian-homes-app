@@ -320,4 +320,76 @@ describe("POST /api/v1/caretakers", () => {
     expect(res.status).toBe(400);
     expect(user.create).not.toHaveBeenCalled();
   });
+
+  function setupSuccessfulCreate() {
+    const custodian = makeUser({ _id: makeObjectId("custodian"), role: "custodian" });
+    user.findById.mockReturnValue(buildQuery(custodian));
+    user.findOne.mockReturnValue(buildQuery(null));
+    managementAssignment.find.mockReturnValue(
+      buildQuery([
+        {
+          principalUserId: custodian._id,
+          accessRole: "custodian",
+          scopeType: "property",
+          propertyId: PROP_ID,
+          status: "active",
+        },
+      ]),
+    );
+    property.find.mockReturnValue(buildQuery([{ _id: PROP_ID, ownerId: OWNER_ID }]));
+    user.create.mockResolvedValue(
+      makeUser({
+        _id: CARE_2,
+        role: "caretaker",
+        name: "New Care",
+        email: "new@care.co",
+        isActive: false,
+      }),
+    );
+    return custodian;
+  }
+
+  it("sends the invite with the stored verification token", async () => {
+    const custodian = setupSuccessfulCreate();
+    vi.mocked(sendInviteEmail).mockResolvedValue(true);
+
+    const res = await POST(
+      buildRequest("/api/v1/caretakers", {
+        method: "POST",
+        token: signToken(custodian._id),
+        body: { email: "new@care.co", name: "New Care" },
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    const createArgs = user.create.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(sendInviteEmail).toHaveBeenCalledWith(
+      "new@care.co",
+      "New Care",
+      "caretaker",
+      createArgs.verificationToken,
+    );
+    expect((await json(res)).emailSent).toBe(true);
+  });
+
+  it("keeps 201 and adds a warning when the invite email fails", async () => {
+    const custodian = setupSuccessfulCreate();
+    vi.mocked(sendInviteEmail).mockResolvedValue(false);
+
+    const res = await POST(
+      buildRequest("/api/v1/caretakers", {
+        method: "POST",
+        token: signToken(custodian._id),
+        body: { email: "new@care.co", name: "New Care" },
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    const body = await json(res);
+    expect(body.emailSent).toBe(false);
+    expect(body.warning).toBe(
+      "Account created, but the invitation email could not be sent. Contact support.",
+    );
+    expect(body.data).toBeDefined();
+  });
 });
