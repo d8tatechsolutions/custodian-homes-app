@@ -99,12 +99,14 @@ describe("Email header and HTML injection protection", () => {
     expect(escapeHtml("no html")).toBe("no html");
   });
 
-  it("uniqueSubject stamps a timestamp onto a sanitized subject with no CR/LF", () => {
+  it("uniqueSubject returns a stable sanitized subject with no timestamp or control chars", () => {
     const source = `Complaint "Leak\r\nX-Injected: yes" resolved - ${BRAND.name}`;
-    const subject = uniqueSubject(source);
-    expect(subject).toContain(`Complaint "Leak  X-Injected: yes" resolved - ${BRAND.name} [`);
-    expect(subject).toMatch(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC\]$/);
-    expect(subject).not.toMatch(/[\r\n]/);
+    const expected = `Complaint "Leak  X-Injected: yes" resolved - ${BRAND.name}`;
+    expect(uniqueSubject(source)).toBe(expected);
+    expect(uniqueSubject(source)).toBe(uniqueSubject(source));
+    expect(expected).not.toMatch(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC\]/);
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: asserts no control chars survive sanitization.
+    expect(uniqueSubject(source)).not.toMatch(/[\u0000-\u001f]/);
   });
 
   it("createComplaintStatusContent escapes a script-laden subject in the HTML body", () => {
@@ -302,7 +304,6 @@ describe("Email templates and transport", () => {
           content: '<a href="{{APP_URL}}">Open</a>',
           text: "Open the app",
           linkUrl: `${getAppUrl()}/dashboard/invoices`,
-          preheader: "Latest update",
         }),
     },
     {
@@ -342,7 +343,7 @@ describe("Email templates and transport", () => {
     expect(html).toContain(`href="${getAppUrl()}/dashboard"`);
   });
 
-  it("escapes names, preheader, href URLs and raw formatPeriod fallback values", async () => {
+  it("escapes href URLs and raw formatPeriod fallback values without hidden content", async () => {
     sendMailMock.mockResolvedValue({ messageId: "id" });
     const rawPeriod = '<img src=x onerror="boom">';
 
@@ -363,12 +364,12 @@ describe("Email templates and transport", () => {
       content: '<a href="{{APP_URL}}">Open</a>',
       text: "Open",
       linkUrl: `${getAppUrl()}/x?a=1&b="<script>"`,
-      preheader: "<script>alert(1)</script>",
     });
 
     const body = sentMail().html ?? "";
     expect(body).not.toContain("<script>");
-    expect(body).toContain(escapeHtml("<script>alert(1)</script>"));
+    expect(body).not.toContain("mso-hide");
+    expect(body).not.toContain("color: transparent");
     expect(body).toContain("&amp;");
     expect(body).toContain("&quot;");
   });
@@ -402,11 +403,11 @@ describe("Email templates and transport", () => {
 
     const config = transportConfig();
     expect(config.host).toBe("smtp.example.com");
+    expect(config.name).toBe("smtp.example.com");
     expect(config.port).toBe(465);
     expect(config.secure).toBe(true);
     expect(config.requireTLS).toBe(false);
     expect(config.tls).toBeUndefined();
-    expect(JSON.stringify(config)).not.toContain("smtp.gmail.com");
   });
 
   it("enforces STARTTLS on port 587", async () => {
@@ -416,6 +417,7 @@ describe("Email templates and transport", () => {
     await sendEmail({ to: "u@example.com", subject: "S", html: "<p>x</p>" });
 
     const config = transportConfig();
+    expect(config.name).toBe("smtp.example.com");
     expect(config.port).toBe(587);
     expect(config.secure).toBe(false);
     expect(config.requireTLS).toBe(true);
@@ -450,5 +452,166 @@ describe("Email templates and transport", () => {
     const errors = JSON.stringify(errorSpy.mock.calls);
     expect(errors).toContain("EMAIL_PORT");
     expect(errors).not.toContain("supersecretpassword");
+  });
+
+  it("sets the EHLO identity from EMAIL_HOST and never sets a hello option", async () => {
+    sendMailMock.mockResolvedValue({ messageId: "id" });
+
+    await sendEmail({ to: "u@example.com", subject: "S", html: "<p>x</p>" });
+
+    const config = transportConfig();
+    expect(config.name).toBe("smtp.example.com");
+    expect(config).not.toHaveProperty("hello");
+  });
+
+  it("derives the EHLO identity from the documented Gmail host", async () => {
+    process.env.EMAIL_HOST = "smtp.gmail.com";
+    sendMailMock.mockResolvedValue({ messageId: "id" });
+
+    await sendEmail({ to: "u@example.com", subject: "S", html: "<p>x</p>" });
+
+    const config = transportConfig();
+    expect(config.name).toBe("smtp.gmail.com");
+  });
+
+  it("normalizes trailing dot, case and surrounding whitespace in EMAIL_HOST", async () => {
+    process.env.EMAIL_HOST = "  SMTP.Example.COM.  ";
+    sendMailMock.mockResolvedValue({ messageId: "id" });
+
+    await sendEmail({ to: "u@example.com", subject: "S", html: "<p>x</p>" });
+
+    const config = transportConfig();
+    expect(config.name).toBe("smtp.example.com");
+  });
+
+  it.each([
+    ["IP literal", "169.254.21.97"],
+    ["bracketed IP literal", "[169.254.21.97]"],
+    ["bracketed IPv6 literal", "[::1]"],
+    ["single-label host", "localhost"],
+    ["CR/LF in host", "smtp.exa\r\nmple.com"],
+    ["control char in host", "smtp.exa\u001fmple.com"],
+    ["non-ASCII host", "smtρ.example.com"],
+    ["underscore in host", "smtp_example.com"],
+    ["overlong label", `${"a".repeat(64)}.example.com`],
+  ])("rejects an invalid EMAIL_HOST (%s) before creating a transport", async (_label, host) => {
+    process.env.EMAIL_HOST = host;
+
+    const result = await sendEmail({ to: "u@example.com", subject: "S", html: "<p>x</p>" });
+
+    expect(result).toBe(false);
+    expect(createTransportMock).not.toHaveBeenCalled();
+    expect(sendMailMock).not.toHaveBeenCalled();
+    const errors = JSON.stringify(errorSpy.mock.calls);
+    expect(errors).toContain("EMAIL_HOST");
+    expect(errors).not.toContain(host);
+    expect(errors).not.toContain("supersecretpassword");
+  });
+
+  it("renders no hidden or invisible spans for any sender", async () => {
+    sendMailMock.mockResolvedValue({ messageId: "id" });
+
+    for (const { send } of emailCases) {
+      sendMailMock.mockClear();
+      await send();
+      const html = sentMail().html ?? "";
+      expect(html).not.toMatch(
+        /<span\b[^>]*style="[^"]*(?:display:\s*none|max-height:\s*0|overflow:\s*hidden|color:\s*transparent|mso-hide|font-size:\s*1px)[^"]*"[^>]*>/i,
+      );
+    }
+  });
+
+  it("keeps verification, reset and invite URLs and recipients consistent across both parts", async () => {
+    sendMailMock.mockResolvedValue({ messageId: "id" });
+    const recipient = "user@example.com";
+    const cases = [
+      {
+        send: () => sendVerificationEmail(recipient, "tok-a", "Ada"),
+        url: `${getAppUrl()}/auth/verify?token=tok-a`,
+      },
+      {
+        send: () => sendPasswordResetEmail(recipient, "tok-b", "Ada"),
+        url: `${getAppUrl()}/auth/reset-password?token=tok-b`,
+      },
+      {
+        send: () => sendInviteEmail(recipient, "Ada", "tenant", "tok-c"),
+        url: `${getAppUrl()}/auth/verify?token=tok-c&invited=1`,
+      },
+      {
+        send: () => sendInviteEmail(recipient, "Ada", "tenant"),
+        url: `${getAppUrl()}/auth?invited=1&email=${encodeURIComponent(recipient)}&role=tenant`,
+      },
+    ];
+
+    for (const { send, url } of cases) {
+      sendMailMock.mockClear();
+      await send();
+      const mail = sentMail();
+      const html = (mail.html ?? "").replace(/&amp;/g, "&");
+      expect(mail.text).toContain(url);
+      expect(html).toContain(url);
+      expect(mail.text).toContain(recipient);
+      expect(html).toContain(recipient);
+    }
+  });
+
+  it("sends exactly one text part and one html part with no hidden arrays", async () => {
+    sendMailMock.mockResolvedValue({ messageId: "id" });
+
+    for (const { send } of emailCases) {
+      sendMailMock.mockClear();
+      await send();
+      const mail = sentMail() as CapturedMail & Record<string, unknown>;
+      expect(typeof mail.text).toBe("string");
+      expect(typeof mail.html).toBe("string");
+      expect(Array.isArray(mail.text)).toBe(false);
+      expect(Array.isArray(mail.html)).toBe(false);
+      for (const key of [
+        "attachments",
+        "alternatives",
+        "alternate",
+        "parts",
+        "hidden",
+        "textAsStream",
+        "htmlAsStream",
+        "preheader",
+      ]) {
+        expect(mail[key]).toBeUndefined();
+      }
+    }
+  });
+
+  it("keeps subjects identical across repeated sends", async () => {
+    sendMailMock.mockResolvedValue({ messageId: "id" });
+
+    await sendVerificationEmail("user@example.com", "tok", "Ada");
+    await sendVerificationEmail("user@example.com", "tok", "Ada");
+
+    const subjects = sendMailMock.mock.calls.map((call) => call[0].subject);
+    expect(subjects[1]).toBe(subjects[0]);
+    expect(subjects[0]).not.toMatch(/\[\d{4}-/);
+  });
+
+  it("uses different verification URLs in both parts for different tokens", async () => {
+    sendMailMock.mockResolvedValue({ messageId: "id" });
+
+    await sendVerificationEmail("user@example.com", "token-one", "Ada");
+    const first = sentMail();
+    sendMailMock.mockClear();
+    await sendVerificationEmail("user@example.com", "token-two", "Ada");
+    const second = sentMail();
+    const firstUrl = `${getAppUrl()}/auth/verify?token=token-one`;
+    const secondUrl = `${getAppUrl()}/auth/verify?token=token-two`;
+    const firstHtml = (first.html ?? "").replace(/&amp;/g, "&");
+    const secondHtml = (second.html ?? "").replace(/&amp;/g, "&");
+
+    expect(first.text).toContain(firstUrl);
+    expect(first.text).not.toContain(secondUrl);
+    expect(firstHtml).toContain(firstUrl);
+    expect(firstHtml).not.toContain(secondUrl);
+    expect(second.text).toContain(secondUrl);
+    expect(second.text).not.toContain(firstUrl);
+    expect(secondHtml).toContain(secondUrl);
+    expect(secondHtml).not.toContain(firstUrl);
   });
 });

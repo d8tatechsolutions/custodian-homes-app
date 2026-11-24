@@ -161,7 +161,6 @@ describe("notifyUser", () => {
         content: "",
         text: "",
         linkUrl: "",
-        preheader: "",
       },
     });
     expect(ok).toBe(true);
@@ -187,7 +186,6 @@ describe("notifyUser", () => {
         content: "c",
         text: "t",
         linkUrl: "http://localhost:3000/x",
-        preheader: "p",
       },
     });
     expect(ok).toBe(true);
@@ -216,7 +214,6 @@ describe("notifyUser", () => {
         content: "",
         text: "",
         linkUrl: "",
-        preheader: "",
       },
     });
     expect(sendNotificationEmailMock).not.toHaveBeenCalled();
@@ -241,7 +238,6 @@ describe("notifyUser", () => {
         content: "",
         text: "",
         linkUrl: "",
-        preheader: "",
       },
     });
     expect(sendNotificationEmailMock).not.toHaveBeenCalled();
