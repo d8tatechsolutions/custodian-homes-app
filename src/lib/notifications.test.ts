@@ -443,7 +443,7 @@ describe("notifyInvoiceOverdue & notifyOverdueInvoices", () => {
     });
     expect(ok).toBe(true);
     expect(invoice.find).toHaveBeenCalledWith({
-      status: "pending",
+      status: { $in: ["pending", "new"] },
       dueDate: { $lt: new Date("2026-09-20T00:00:00.000Z") },
       ownerId: OWNER_ID,
     });

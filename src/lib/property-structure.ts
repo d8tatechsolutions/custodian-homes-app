@@ -1,18 +1,19 @@
 import { Types } from "mongoose";
 import type { PropertyPurpose } from "@/lib/domain-enums";
 import {
+  DuplexLayoutError,
+  type FloorLayout,
+  normalizeUnitDuplex,
+  resolveBlockLayout,
+  type UpperFloorMode,
+} from "@/lib/duplex-layout";
+import {
   MAX_UNITS_PER_PROPERTY,
   type PersistedBlock,
   type StructureBlockInput,
   type UnitInsert,
 } from "@/lib/schemas/structure";
-import {
-  buildDuplexUnitNames,
-  buildUnitNames,
-  defaultDuplexUnitName,
-  defaultUnitName,
-  letterLabel,
-} from "@/lib/unit-naming";
+import { defaultDuplexUnitName, defaultUnitName, letterLabel } from "@/lib/unit-naming";
 
 /**
  * Reconciles a property's persisted `blocks` structure with an edited payload,
@@ -39,6 +40,8 @@ export interface ExistingUnit {
   status: string;
   /** ID of the secondary floor for duplex units (empty if single-floor). */
   secondaryFloorId?: string;
+  /** Floors this unit spans today (1 = simplex, 2 = duplex). */
+  spanFloors?: number;
   /** Array of occupant user ids. Empty = vacant. */
   tenantId?: string[];
 }
@@ -50,7 +53,9 @@ export interface NextFloor {
   unitsPerFloor: number;
   rentOverride: number | null;
   purpose: PropertyPurpose | null;
-  duplex: boolean;
+  duplex: boolean | null;
+  unitDuplex: (boolean | null)[];
+  upperFloorMode: UpperFloorMode;
 }
 
 export interface NextBlock {
@@ -206,14 +211,39 @@ export function planStructureUpdate(input: StructurePlanInput): StructurePlan {
 
     const blockDuplex = spec.duplex ?? existingBlock?.duplex ?? false;
 
+    const existingFloors = spec.floors.map((floorSpec) =>
+      existingBlock && floorSpec.id
+        ? existingBlock.floors.find((floor) => String(floor._id) === floorSpec.id)
+        : undefined,
+    );
     // Pre-resolve floor IDs so duplex units can reference their secondary floor.
-    const floorIds = spec.floors.map((floorSpec) => {
-      const existingFloor =
-        existingBlock && floorSpec.id
-          ? existingBlock.floors.find((floor) => String(floor._id) === floorSpec.id)
-          : undefined;
-      return existingFloor ? String(existingFloor._id) : String(new Types.ObjectId());
-    });
+    const floorIds = existingFloors.map((floor) =>
+      floor ? String(floor._id) : String(new Types.ObjectId()),
+    );
+
+    // Resolve duplex / simplex per unit and how duplexes affect the floor above.
+    // Settings the payload omits fall back to what is saved, so an editor that
+    // does not send them can never reset units someone configured by hand.
+    let layouts: FloorLayout[];
+    try {
+      layouts = resolveBlockLayout(
+        spec.floors.map((floorSpec, floorIndex) => {
+          const existingFloor = existingFloors[floorIndex];
+          return {
+            level: floorSpec.level,
+            unitsPerFloor: floorSpec.unitsPerFloor ?? 0,
+            duplex: floorSpec.duplex != null ? floorSpec.duplex : (existingFloor?.duplex ?? null),
+            unitDuplex: floorSpec.unitDuplex ?? existingFloor?.unitDuplex ?? [],
+            upperFloorMode: floorSpec.upperFloorMode ?? existingFloor?.upperFloorMode ?? null,
+          };
+        }),
+        blockDuplex,
+        { blockName: spec.name, strictFloorDuplex: true },
+      );
+    } catch (error) {
+      if (error instanceof DuplexLayoutError) throw new StructureError(error.message);
+      throw error;
+    }
 
     const usedNames = new Set<string>();
     for (const unit of unitsByBlock.get(blockId) ?? []) {
@@ -232,76 +262,64 @@ export function planStructureUpdate(input: StructurePlanInput): StructurePlan {
     };
 
     const floors: NextFloor[] = spec.floors.map((floorSpec, floorIndex) => {
-      const existingFloor =
-        existingBlock && floorSpec.id
-          ? existingBlock.floors.find((floor) => String(floor._id) === floorSpec.id)
-          : undefined;
+      const existingFloor = existingFloors[floorIndex];
       const floorId = floorIds[floorIndex];
+      const layout = layouts[floorIndex];
       const label = floorSpec.label ?? existingFloor?.label ?? "";
-      const desired = floorSpec.unitsPerFloor ?? 0;
-
-      // Duplex: block-level default, floor-level override.
-      const floorDuplex =
-        floorSpec.duplex != null
-          ? floorSpec.duplex
-          : existingFloor?.duplex != null
-            ? existingFloor.duplex
-            : blockDuplex;
+      // Units this floor materialises (duplexes from below may take slots).
+      const desired = layout.count;
 
       // Secondary floor for duplex units (the floor above in the same block).
-      const nextFloorIndex = floorIndex + 1;
-      const nextFloorId = nextFloorIndex < floorIds.length ? floorIds[nextFloorIndex] : null;
+      const nextFloorId = floorIndex + 1 < floorIds.length ? floorIds[floorIndex + 1] : null;
       const nextFloorLevel =
-        nextFloorIndex < spec.floors.length ? spec.floors[nextFloorIndex].level : null;
-      const isDuplex = floorDuplex && nextFloorId != null && nextFloorLevel != null;
+        floorIndex + 1 < spec.floors.length ? spec.floors[floorIndex + 1].level : null;
 
-      // Warn if duplex requested on the top floor (no floor above to span into).
-      if (floorDuplex && !isDuplex) {
-        throw new StructureError(
-          `Floor ${floorSpec.level} in block "${spec.name}" is marked duplex but has no floor above to span into.`,
-        );
-      }
+      const spanFor = (position: number) =>
+        layout.duplexFlags[position] === true && nextFloorId != null && nextFloorLevel != null
+          ? { spanFloors: 2, secondaryFloorId: nextFloorId, secondaryFloorLevel: nextFloorLevel }
+          : { spanFloors: 1, secondaryFloorId: "", secondaryFloorLevel: 0 };
 
-      const liveUnits = (unitsByFloor.get(floorId) ?? []).filter(
-        (unit) => !deletedUnitIds.has(String(unit._id)),
-      );
+      const nameFor = (position: number): string => {
+        const custom = floorSpec.unitNames?.[position]?.trim();
+        if (custom && custom.length > 0) return reserveName(custom);
+        const generated =
+          layout.duplexFlags[position] === true && nextFloorLevel != null
+            ? defaultDuplexUnitName(floorSpec.level, nextFloorLevel, position)
+            : defaultUnitName(floorSpec.level, position);
+        return reserveName(generated);
+      };
 
-      const spanFloors = isDuplex ? 2 : 1;
-      const secondaryFloorId = isDuplex ? (nextFloorId ?? "") : "";
-      const secondaryFloorLevel = isDuplex ? (nextFloorLevel ?? 0) : 0;
-
-      const insertsFor = (names: string[], startIndex: number): UnitInsert[] =>
-        names.map((name, offset) => {
-          const index = startIndex + offset;
-          return {
-            propertyId,
-            ownerId,
-            blockId,
-            blockName: spec.name,
-            floorId,
-            floorLevel: floorSpec.level,
-            floorLabel: label,
-            name,
-            letter: letterLabel(index),
-            status: "available",
-            rent: null,
-            purpose: null,
-            spanFloors,
-            secondaryFloorId,
-            secondaryFloorLevel,
-            tenantId: [],
-          };
-        });
+      const insertFor = (position: number): UnitInsert => ({
+        propertyId,
+        ownerId,
+        blockId,
+        blockName: spec.name,
+        floorId,
+        floorLevel: floorSpec.level,
+        floorLabel: label,
+        name: nameFor(position),
+        letter: letterLabel(position),
+        status: "available",
+        rent: null,
+        purpose: null,
+        ...spanFor(position),
+        tenantId: [],
+      });
 
       if (existingFloor) {
-        if (desired < liveUnits.length) {
-          const sorted = [...liveUnits].sort(
-            (a, b) => letterIndex(a.letter) - letterIndex(b.letter),
-          );
+        const sorted = (unitsByFloor.get(floorId) ?? [])
+          .filter((unit) => !deletedUnitIds.has(String(unit._id)))
+          .sort((a, b) => letterIndex(a.letter) - letterIndex(b.letter));
+
+        if (desired < sorted.length) {
           const removable = sorted.slice(desired);
           if (removable.some(isOccupied)) {
+            const reason =
+              layout.takenByBelow > 0
+                ? ` (${layout.takenByBelow} slot(s) are taken by duplex units from the floor below)`
+                : "";
             throw new StructureError(
-              `Cannot reduce units on floor ${floorSpec.level} below its ${liveUnits.filter(isOccupied).length} occupied unit(s).`,
+              `Cannot reduce units on floor ${floorSpec.level} below its ${sorted.filter(isOccupied).length} occupied unit(s)${reason}.`,
             );
           }
           for (const unit of removable) {
@@ -311,10 +329,15 @@ export function planStructureUpdate(input: StructurePlanInput): StructurePlan {
           }
         }
 
-        const surviving = (unitsByFloor.get(floorId) ?? []).filter(
-          (unit) => !deletedUnitIds.has(String(unit._id)),
-        );
-        for (const unit of surviving) {
+        // Existing units keep their id and name; only placement/span change.
+        const surviving = sorted.slice(0, Math.min(desired, sorted.length));
+        surviving.forEach((unit, position) => {
+          const span = spanFor(position);
+          if (isOccupied(unit) && span.spanFloors !== (unit.spanFloors ?? 1)) {
+            throw new StructureError(
+              `Unit "${unit.name}" is occupied and cannot be switched between duplex and simplex. Move the tenant out first.`,
+            );
+          }
           unitUpdates.push({
             id: String(unit._id),
             blockId,
@@ -322,57 +345,35 @@ export function planStructureUpdate(input: StructurePlanInput): StructurePlan {
             floorId,
             floorLevel: floorSpec.level,
             floorLabel: label,
-            spanFloors,
-            secondaryFloorId,
-            secondaryFloorLevel,
+            ...span,
           });
-        }
+        });
 
-        if (desired > surviving.length) {
-          const names = Array.from({ length: desired - surviving.length }, (_, i) => {
-            const index = surviving.length + i;
-            const custom = floorSpec.unitNames?.[index]?.trim();
-            if (custom && custom.length > 0) return reserveName(custom);
-            const generated = isDuplex
-              ? defaultDuplexUnitName(floorSpec.level, nextFloorLevel ?? 0, index)
-              : defaultUnitName(floorSpec.level, index);
-            return reserveName(generated);
-          });
-          unitCreates.push(...insertsFor(names, surviving.length));
+        for (let position = surviving.length; position < desired; position += 1) {
+          unitCreates.push(insertFor(position));
         }
-
-        return {
-          _id: new Types.ObjectId(floorId),
-          level: floorSpec.level,
-          label,
-          unitsPerFloor: desired,
-          rentOverride: floorSpec.rentOverride ?? null,
-          purpose: floorSpec.purpose ?? null,
-          duplex: floorDuplex,
-        };
+      } else {
+        // Brand-new floor.
+        for (let position = 0; position < desired; position += 1) {
+          unitCreates.push(insertFor(position));
+        }
       }
-
-      // Brand-new floor.
-      const names = isDuplex
-        ? buildDuplexUnitNames(
-            floorSpec.level,
-            nextFloorLevel ?? 0,
-            desired,
-            floorSpec.unitNames,
-          ).map((name) => reserveName(name))
-        : buildUnitNames(floorSpec.level, desired, floorSpec.unitNames).map((name) =>
-            reserveName(name),
-          );
-      unitCreates.push(...insertsFor(names, 0));
 
       return {
         _id: new Types.ObjectId(floorId),
         level: floorSpec.level,
         label,
-        unitsPerFloor: desired,
+        // The entered value (slots when the floor below consumes them).
+        unitsPerFloor: layout.requested,
         rentOverride: floorSpec.rentOverride ?? null,
         purpose: floorSpec.purpose ?? null,
-        duplex: floorDuplex,
+        // Keep the floor's own choice (null = inherit the block flag).
+        duplex: floorSpec.duplex != null ? floorSpec.duplex : (existingFloor?.duplex ?? null),
+        unitDuplex: normalizeUnitDuplex(
+          floorSpec.unitDuplex ?? existingFloor?.unitDuplex ?? [],
+          layout.count,
+        ),
+        upperFloorMode: layout.upperFloorMode,
       };
     });
 

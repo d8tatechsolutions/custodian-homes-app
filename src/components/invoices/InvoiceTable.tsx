@@ -11,12 +11,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDate, formatKES, formatPeriod } from "@/lib/format";
-import type { DerivedInvoiceStatus } from "@/lib/invoicing";
+import { type DerivedInvoiceStatus, invoiceStatusLabel } from "@/lib/invoicing";
 import type { Invoice } from "@/types/invoicing";
 
 const statusClass: Record<DerivedInvoiceStatus, string> = {
   paid: "bg-success/15 text-success",
   pending: "bg-warning/15 text-warning",
+  new: "bg-warning/15 text-warning",
   overdue: "bg-destructive/15 text-destructive",
   draft: "bg-muted text-muted-foreground",
   void: "bg-muted text-muted-foreground",
@@ -55,7 +56,11 @@ export const InvoiceTable = ({ invoices, tenantNames, renderActions }: InvoiceTa
             return (
               <TableRow key={invoice._id}>
                 <TableCell className="font-medium">
-                  {invoice.invoiceNumber}
+                  {invoice.invoiceNumber || (
+                    <span className="font-normal text-muted-foreground">
+                      Draft · number on issue
+                    </span>
+                  )}
                   {invoice.paymentReference && (
                     <p className="text-xs font-normal text-muted-foreground">
                       Ref: {invoice.paymentReference}
@@ -86,8 +91,8 @@ export const InvoiceTable = ({ invoices, tenantNames, renderActions }: InvoiceTa
                   {formatDate(invoice.dueDate)}
                 </TableCell>
                 <TableCell>
-                  <Badge className={`${statusClass[invoice.status]} capitalize hover:opacity-100`}>
-                    {invoice.status}
+                  <Badge className={`${statusClass[invoice.status]} hover:opacity-100`}>
+                    {invoiceStatusLabel(invoice.status)}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">{renderActions?.(invoice)}</TableCell>

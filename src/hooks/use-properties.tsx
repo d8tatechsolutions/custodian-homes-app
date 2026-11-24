@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PropertyPurpose } from "@/lib/domain-enums";
+import type { UpperFloorMode } from "@/lib/duplex-layout";
 import type { PropertyStatus, PropertyType } from "@/lib/property-types";
 
 export type { PropertyPurpose, PropertyStatus };
@@ -14,6 +15,8 @@ export interface PropertyFloor {
   rentOverride: number | null;
   purpose?: PropertyPurpose | null;
   duplex?: boolean | null;
+  unitDuplex?: (boolean | null)[];
+  upperFloorMode?: UpperFloorMode | null;
 }
 
 export interface PropertyBlock {
@@ -37,6 +40,10 @@ export interface FloorInputPayload {
   unitNames?: string[];
   /** Duplex override: null/undefined inherits from the block-level setting. */
   duplex?: boolean | null;
+  /** Per-unit duplex overrides by position; null inherits the floor flag. */
+  unitDuplex?: (boolean | null)[];
+  /** How duplexes starting on this floor affect the floor above. */
+  upperFloorMode?: UpperFloorMode | null;
 }
 
 export interface BlockInputPayload {
@@ -69,6 +76,8 @@ export function toBlockPayloads(property: Pick<Property, "blocks">): BlockInputP
       purpose: floor.purpose,
       unitsPerFloor: floor.unitsPerFloor,
       duplex: floor.duplex ?? null,
+      unitDuplex: floor.unitDuplex ?? [],
+      upperFloorMode: floor.upperFloorMode ?? "keep",
     })),
   }));
 }

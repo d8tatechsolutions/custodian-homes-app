@@ -57,7 +57,9 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
   >[0]["existingBlocks"];
 
   const unitDocs = await Unit.find({ propertyId: id, deletedAt: null })
-    .select("blockId floorId name letter status tenantId")
+    // secondaryFloorId + spanFloors are required for the duplex guards: without
+    // them a floor an occupied duplex spans into could be removed.
+    .select("blockId floorId name letter status tenantId secondaryFloorId spanFloors")
     .lean();
 
   const existingUnits: ExistingUnit[] = unitDocs.map((unit) => ({
@@ -67,6 +69,8 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     name: String(unit.name ?? ""),
     letter: String(unit.letter ?? ""),
     status: String(unit.status ?? "available"),
+    secondaryFloorId: String(unit.secondaryFloorId ?? ""),
+    spanFloors: Number(unit.spanFloors ?? 1) || 1,
     tenantId: Array.isArray(unit.tenantId)
       ? unit.tenantId.map(String)
       : unit.tenantId

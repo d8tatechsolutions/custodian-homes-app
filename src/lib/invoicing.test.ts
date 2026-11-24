@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as R1 from "@/lib/invoicing";
 import {
   assertValidPeriod,
   canDelete,
@@ -248,9 +249,11 @@ describe("resolveManualPayment", () => {
 });
 
 describe("state-machine guards", () => {
-  it("canMarkPaid accepts draft, pending and derived overdue", () => {
-    expect(canMarkPaid("draft")).toBe(true);
+  it("canMarkPaid accepts open (pending/new) and derived overdue, never drafts", () => {
+    // Drafts are templates: they must be issued before a payment is recorded.
+    expect(canMarkPaid("draft")).toBe(false);
     expect(canMarkPaid("pending")).toBe(true);
+    expect(canMarkPaid("new")).toBe(true);
     expect(canMarkPaid("overdue")).toBe(true);
     expect(canMarkPaid("paid")).toBe(false);
     expect(canMarkPaid("void")).toBe(false);
@@ -270,5 +273,71 @@ describe("state-machine guards", () => {
     expect(canDelete("overdue")).toBe(false);
     expect(canDelete("paid")).toBe(false);
     expect(canDelete("void")).toBe(false);
+  });
+});
+
+describe("invoice states R1: pending and new are equivalent", () => {
+  const now = new Date("2026-06-15T00:00:00.000Z");
+
+  it("derives overdue for both open states and never for drafts", () => {
+    const past = new Date("2026-06-01T00:00:00.000Z");
+    expect(R1.deriveStatus({ status: "new", dueDate: past }, now)).toBe("overdue");
+    expect(R1.deriveStatus({ status: "pending", dueDate: past }, now)).toBe("overdue");
+    expect(R1.deriveStatus({ status: "draft", dueDate: past }, now)).toBe("draft");
+  });
+
+  it("labels both open states Unpaid and never shows the raw value", () => {
+    expect(R1.invoiceStatusLabel("new")).toBe("Unpaid");
+    expect(R1.invoiceStatusLabel("pending")).toBe("Unpaid");
+    expect(R1.invoiceStatusLabel("overdue")).toBe("Overdue");
+    expect(R1.invoiceStatusLabel("draft")).toBe("Draft");
+  });
+
+  it("maps list status filters onto both open states", () => {
+    expect(R1.invoiceStatusFilter("pending", now)).toEqual({ status: { $in: ["pending", "new"] } });
+    expect(R1.invoiceStatusFilter("new", now)).toEqual({ status: { $in: ["pending", "new"] } });
+    expect(R1.invoiceStatusFilter("overdue", now)).toEqual({
+      status: { $in: ["pending", "new"] },
+      dueDate: { $lt: now },
+    });
+    expect(R1.invoiceStatusFilter("paid", now)).toEqual({ status: "paid" });
+    expect(R1.invoiceStatusFilter(null, now)).toBeNull();
+  });
+
+  it("only open invoices with no payment are payable online", () => {
+    expect(R1.canPayOnline({ status: "new", amountPaid: 0 })).toBe(true);
+    expect(R1.canPayOnline({ status: "draft", amountPaid: 0 })).toBe(false);
+  });
+
+  it("keeps an invoice's own open status on a partial manual payment", () => {
+    expect(R1.resolveManualPayment({ amountDue: 100, amountPaid: 0, status: "new" }, 40)).toEqual({
+      ok: true,
+      amountPaid: 40,
+      status: "new",
+    });
+    expect(
+      R1.resolveManualPayment({ amountDue: 100, amountPaid: 0, status: "pending" }, 40),
+    ).toMatchObject({ status: "pending" });
+  });
+
+  it("only drafts can be issued", () => {
+    expect(R1.canIssue("draft")).toBe(true);
+    expect(R1.canIssue("new")).toBe(false);
+    expect(R1.canIssue("paid")).toBe(false);
+  });
+
+  it("rejects future billed months and due dates before the billed month", () => {
+    expect(R1.isFuturePeriod("2026-07", now)).toBe(true);
+    expect(R1.isFuturePeriod("2026-06", now)).toBe(false);
+    expect(R1.resolveDueDate("2026-06")).toEqual({
+      ok: true,
+      dueDate: new Date(Date.UTC(2026, 6, 5)),
+    });
+    expect(R1.resolveDueDate("2026-06", "2026-06-20")).toEqual({
+      ok: true,
+      dueDate: new Date(Date.UTC(2026, 5, 20)),
+    });
+    expect(R1.resolveDueDate("2026-06", "2026-05-31")).toMatchObject({ ok: false });
+    expect(R1.resolveDueDate("2026-06", "garbage")).toMatchObject({ ok: false });
   });
 });

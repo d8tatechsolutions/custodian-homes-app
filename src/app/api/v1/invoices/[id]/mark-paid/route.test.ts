@@ -267,7 +267,7 @@ describe("POST /api/v1/invoices/[id]/mark-paid", () => {
     ];
     expect(filter).toEqual({
       _id: INVOICE_ID,
-      status: { $in: ["pending", "draft"] },
+      status: { $in: ["pending", "new"] },
       amountPaid: 0,
     });
     expect(updateData.status).toBe("paid");
@@ -360,7 +360,7 @@ describe("POST /api/v1/invoices/[id]/mark-paid", () => {
     ];
     expect(filter).toEqual({
       _id: INVOICE_ID,
-      status: { $in: ["pending", "draft"] },
+      status: { $in: ["pending", "new"] },
       amountPaid: 5000,
     });
     expect(updateData.status).toBe("paid");
@@ -425,7 +425,7 @@ describe("POST /api/v1/invoices/[id]/mark-paid", () => {
     expect(updateData.paymentDescription).toBe("full payment");
   });
 
-  it("marks a draft invoice paid", async () => {
+  it("409 for a draft: drafts must be issued before a payment is recorded", async () => {
     user.findById.mockReturnValue(buildQuery(ownerDoc()));
     invoiceStub.findById.mockReturnValue(
       buildQuery(
@@ -456,7 +456,10 @@ describe("POST /api/v1/invoices/[id]/mark-paid", () => {
       }),
       withParams(INVOICE_ID),
     );
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("Issue the draft before recording a payment");
+    expect(invoiceStub.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
   it("an in-scope caretaker marks an attached invoice paid as caretaker", async () => {

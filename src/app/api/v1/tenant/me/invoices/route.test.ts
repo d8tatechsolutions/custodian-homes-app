@@ -99,7 +99,11 @@ describe("GET /api/v1/tenant/me/invoices", () => {
     );
     expect(res.status).toBe(200);
     expect(tenantStub.find).toHaveBeenCalledWith({ userId: TENANT_USER_ID, deletedAt: null });
-    expect(invoiceStub.find).toHaveBeenCalledWith({ tenantId: { $in: [TENANT_A, TENANT_B] } });
+    // Drafts are templates and never shown to tenants.
+    expect(invoiceStub.find).toHaveBeenCalledWith({
+      tenantId: { $in: [TENANT_A, TENANT_B] },
+      status: { $ne: "draft" },
+    });
   });
 
   it("appends period and status filters when present", async () => {
@@ -117,8 +121,21 @@ describe("GET /api/v1/tenant/me/invoices", () => {
     expect(invoiceStub.find).toHaveBeenCalledWith({
       tenantId: { $in: [TENANT_A] },
       period: "2026-09",
-      status: "pending",
+      status: { $in: ["pending", "new"] },
     });
+  });
+
+  it("returns an empty page for status=draft without querying invoices", async () => {
+    user.findById.mockReturnValue(buildQuery(tenantDoc()));
+    tenantStub.find.mockReturnValue(buildQuery([{ _id: TENANT_A }]));
+
+    const res = await GET(
+      buildRequest("/api/v1/tenant/me/invoices?status=draft", {
+        token: signToken(TENANT_USER_ID),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(invoiceStub.find).not.toHaveBeenCalled();
   });
 
   it("derives the overdue filter as pending-and-dueDate-past and sweeps the tenant scope", async () => {
@@ -133,8 +150,8 @@ describe("GET /api/v1/tenant/me/invoices", () => {
       }),
     );
     expect(res.status).toBe(200);
-    const filter = invoiceStub.find.mock.calls[0][0] as { status: string; dueDate: { $lt: Date } };
-    expect(filter.status).toBe("pending");
+    const filter = invoiceStub.find.mock.calls[0][0] as { status: unknown; dueDate: { $lt: Date } };
+    expect(filter.status).toEqual({ $in: ["pending", "new"] });
     expect(filter.dueDate.$lt).toBeInstanceOf(Date);
     expect(notifyOverdueInvoicesMock).toHaveBeenCalledTimes(1);
     expect(notifyOverdueInvoicesMock).toHaveBeenCalledWith(expect.any(Date), {

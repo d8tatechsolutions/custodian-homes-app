@@ -24,7 +24,8 @@ export interface Invoice {
   serviceFeeItems?: Array<{ itemId: string; label: string; amount: number }>;
   status: DerivedInvoiceStatus;
   dueDate: string;
-  issuedAt: string;
+  /** Null for a draft (template); set when the invoice is issued. */
+  issuedAt: string | null;
   paidAt?: string;
   method?: InvoiceMethod;
   notes?: string;

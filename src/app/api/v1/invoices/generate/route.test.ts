@@ -221,9 +221,11 @@ describe("POST /api/v1/invoices/generate", () => {
       status: "active",
       $or: [{ propertyId: { $in: [PROPERTY_ID] } }],
     });
+    // Number-less drafts are templates and must not block generation.
     expect(invoiceStub.find).toHaveBeenCalledWith({
       leaseId: { $in: [LEASE_A, LEASE_B] },
       period,
+      invoiceNumber: { $gt: "" },
     });
     expect(user.findOneAndUpdate).toHaveBeenCalledTimes(1);
     expect(user.findOneAndUpdate).toHaveBeenCalledWith(

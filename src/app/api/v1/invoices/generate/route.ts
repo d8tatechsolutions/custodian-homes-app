@@ -101,7 +101,13 @@ export async function POST(request: NextRequest) {
 
   const leases = await Lease.find(filter).lean();
   const leaseIds = leases.map((lease) => String(lease._id));
-  const existing = await Invoice.find({ leaseId: { $in: leaseIds }, period })
+  // Only issued invoices count: a number-less draft is a template and must not
+  // stop the real invoice for that lease-month from being generated.
+  const existing = await Invoice.find({
+    leaseId: { $in: leaseIds },
+    period,
+    invoiceNumber: { $gt: "" },
+  })
     .select("leaseId")
     .lean();
 

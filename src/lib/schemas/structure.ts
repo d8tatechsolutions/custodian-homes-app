@@ -4,6 +4,7 @@ import {
   PROPERTY_PURPOSES,
   type PropertyPurpose,
 } from "@/lib/domain-enums";
+import { UPPER_FLOOR_MODES, type UpperFloorMode } from "@/lib/duplex-layout";
 
 export const floorInput = z.object({
   level: z.coerce.number().int().min(-5).max(200),
@@ -15,6 +16,11 @@ export const floorInput = z.object({
   unitNames: z.array(z.string().trim().min(1).max(24)).optional(),
   // Duplex override: null/undefined inherits from the block-level setting.
   duplex: z.boolean().nullable().optional(),
+  // Per-unit duplex overrides by position on this floor (null = inherit the
+  // floor flag). Lets one floor mix duplex and simplex units.
+  unitDuplex: z.array(z.boolean().nullable()).max(200).optional(),
+  // How duplexes that start on this floor affect the floor above.
+  upperFloorMode: z.enum(UPPER_FLOOR_MODES).nullable().optional(),
 });
 
 export const blockInput = z.object({
@@ -67,6 +73,8 @@ export interface PersistedFloor {
   rentOverride?: number | null;
   purpose?: PropertyPurpose | null;
   duplex?: boolean | null;
+  unitDuplex?: (boolean | null)[];
+  upperFloorMode?: UpperFloorMode | null;
 }
 
 export interface PersistedBlock {

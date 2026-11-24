@@ -17,9 +17,14 @@ import {
 import { Switch } from "@/components/ui/switch";
 import type { BlockInputPayload, FloorInputPayload } from "@/hooks/use-properties";
 import { PROPERTY_PURPOSES, type PropertyPurpose } from "@/lib/domain-enums";
+import {
+  UPPER_FLOOR_MODE_LABELS,
+  UPPER_FLOOR_MODES,
+  type UpperFloorMode,
+} from "@/lib/duplex-layout";
 import { formatKES } from "@/lib/format";
 import { effectiveRent, MAX_UNITS_PER_PROPERTY } from "@/lib/schemas/structure";
-import { buildUnitNames } from "@/lib/unit-naming";
+import { previewBlock } from "@/lib/structure-preview";
 
 export interface PropertyStructureEditorProps {
   blocks: BlockInputPayload[];
@@ -42,8 +47,12 @@ const emptyBlock = (index: number): BlockInputPayload => ({
   floors: [emptyFloor()],
 });
 
+/**
+ * Units a block materialises. Duplexes that take slots on the floor above
+ * (`consume` / `full`) are accounted for, matching what the server creates.
+ */
 export function countBlockUnits(block: BlockInputPayload): number {
-  return block.floors.reduce((sum, f) => sum + Math.max(0, f.unitsPerFloor || 0), 0);
+  return previewBlock(block).floors.reduce((sum, floor) => sum + floor.layout.count, 0);
 }
 
 export function totalUnits(blocks: BlockInputPayload[]): number {
@@ -76,17 +85,18 @@ export function summarizeStructure(blocks: BlockInputPayload[], baseRent = 0): S
   let priced = false;
 
   for (const block of blocks) {
-    for (const floor of block.floors) {
+    const preview = previewBlock(block);
+    block.floors.forEach((floor, floorIndex) => {
       floors += 1;
-      const count = Math.max(0, floor.unitsPerFloor || 0);
-      if (count === 0) continue;
+      const count = preview.floors[floorIndex]?.layout.count ?? 0;
+      if (count === 0) return;
       units += count;
       const rent = effectiveRent(null, floor.rentOverride, block.rentOverride, baseRent);
       monthlyRent += rent * count;
       minRent = priced ? Math.min(minRent, rent) : rent;
       maxRent = priced ? Math.max(maxRent, rent) : rent;
       priced = true;
-    }
+    });
   }
 
   return {
@@ -99,7 +109,11 @@ export function summarizeStructure(blocks: BlockInputPayload[], baseRent = 0): S
   };
 }
 
-/** Returns a list of human-readable validation errors for the structure. */
+/**
+ * Returns a list of human-readable validation errors for the structure. Every
+ * rule the server enforces on save is checked here, so the UI blocks an
+ * invalid save before it is sent.
+ */
 export function validateBlocks(blocks: BlockInputPayload[]): string[] {
   const errors: string[] = [];
   const blockNames = new Set<string>();
@@ -113,10 +127,15 @@ export function validateBlocks(blocks: BlockInputPayload[]): string[] {
     if (blockNames.has(key)) errors.push(`Duplicate block name: ${name}`);
     blockNames.add(key);
 
-    for (const floor of block.floors) {
-      const names = buildUnitNames(floor.level, floor.unitsPerFloor, floor.unitNames);
-      const seen = new Set<string>();
-      for (const n of names) {
+    const preview = previewBlock(block);
+    if (preview.error) {
+      errors.push(preview.error);
+      continue;
+    }
+    // Unit names are unique per block (across all of its floors).
+    const seen = new Set<string>();
+    for (const floor of preview.floors) {
+      for (const n of floor.names) {
         const nk = n.trim().toLowerCase();
         if (seen.has(nk)) errors.push(`Duplicate unit name "${n}" in ${name}.`);
         seen.add(nk);
@@ -128,6 +147,15 @@ export function validateBlocks(blocks: BlockInputPayload[]): string[] {
   }
   return errors;
 }
+
+/** Floor fields whose change alters which units exist or how they are named. */
+const LAYOUT_FIELDS: (keyof FloorInputPayload)[] = [
+  "level",
+  "unitsPerFloor",
+  "duplex",
+  "unitDuplex",
+  "upperFloorMode",
+];
 
 export const PropertyStructureEditor = ({
   blocks,
@@ -144,7 +172,35 @@ export const PropertyStructureEditor = ({
 
   const toggleBlockDuplex = (blockIndex: number) => {
     const current = blocks[blockIndex].duplex ?? false;
-    updateBlock(blockIndex, { duplex: !current });
+    // Generated names (e.g. from Bulk generate) follow the new layout.
+    updateBlock(blockIndex, {
+      duplex: !current,
+      floors: blocks[blockIndex].floors.map((f) => ({ ...f, unitNames: [] })),
+    });
+  };
+
+  const updateFloor = (
+    blockIndex: number,
+    floorIndex: number,
+    patch: Partial<FloorInputPayload>,
+  ) => {
+    const changesLayout = LAYOUT_FIELDS.some((field) => field in patch);
+    update(
+      blocks.map((b, i) =>
+        i === blockIndex
+          ? {
+              ...b,
+              floors: b.floors.map((f, j) => {
+                if (j === floorIndex) {
+                  return { ...f, ...patch, ...(changesLayout ? { unitNames: [] } : {}) };
+                }
+                // Neighbouring floors' duplex names / slot counts depend on this floor.
+                return changesLayout ? { ...f, unitNames: [] } : f;
+              }),
+            }
+          : b,
+      ),
+    );
   };
 
   const toggleFloorDuplex = (blockIndex: number, floorIndex: number) => {
@@ -154,27 +210,31 @@ export const PropertyStructureEditor = ({
     updateFloor(blockIndex, floorIndex, { duplex: next });
   };
 
-  const updateFloor = (
+  /** Flip one unit between duplex and simplex (stored as a per-unit override). */
+  const toggleUnitDuplex = (
     blockIndex: number,
     floorIndex: number,
-    patch: Partial<FloorInputPayload>,
+    unitIndex: number,
+    currentlyDuplex: boolean,
   ) => {
-    update(
-      blocks.map((b, i) =>
-        i === blockIndex
-          ? { ...b, floors: b.floors.map((f, j) => (j === floorIndex ? { ...f, ...patch } : f)) }
-          : b,
-      ),
-    );
+    const floor = blocks[blockIndex].floors[floorIndex];
+    const overrides = [...(floor.unitDuplex ?? [])];
+    while (overrides.length <= unitIndex) overrides.push(null);
+    overrides[unitIndex] = !currentlyDuplex;
+    updateFloor(blockIndex, floorIndex, { unitDuplex: overrides });
   };
 
   const addBlock = () => update([...blocks, emptyBlock(blocks.length)]);
   const removeBlock = (blockIndex: number) => update(blocks.filter((_, i) => i !== blockIndex));
   const addFloor = (blockIndex: number) =>
-    updateBlock(blockIndex, { floors: [...blocks[blockIndex].floors, emptyFloor()] });
+    updateBlock(blockIndex, {
+      floors: [...blocks[blockIndex].floors.map((f) => ({ ...f, unitNames: [] })), emptyFloor()],
+    });
   const removeFloor = (blockIndex: number, floorIndex: number) =>
     updateBlock(blockIndex, {
-      floors: blocks[blockIndex].floors.filter((_, j) => j !== floorIndex),
+      floors: blocks[blockIndex].floors
+        .filter((_, j) => j !== floorIndex)
+        .map((f) => ({ ...f, unitNames: [] })),
     });
 
   const total = totalUnits(blocks);
@@ -189,197 +249,312 @@ export const PropertyStructureEditor = ({
           </Label>
           <p className="text-xs text-muted-foreground">
             Optional. Add blocks, floors and how many units each floor holds. Units are named
-            automatically (e.g. 3A, GB) and can be renamed later.
+            automatically (e.g. 3A, GB) and can be renamed later. A unit can be a duplex (spans the
+            floor above) or a simplex — set it for the whole block, a floor, or a single unit.
           </p>
         </div>
         <span className="shrink-0 text-xs font-medium text-muted-foreground">{total} units</span>
       </div>
 
-      {blocks.map((block, blockIndex) => (
-        <div key={blockIndex} className="space-y-2 rounded-md border border-border/70 p-3">
-          <div className="flex items-end gap-2">
-            <div className="flex-1 space-y-1">
-              <Label htmlFor={`block-name-${blockIndex}`}>Block name</Label>
-              <Input
-                id={`block-name-${blockIndex}`}
-                value={block.name}
-                disabled={disabled}
-                onChange={(e) => updateBlock(blockIndex, { name: e.target.value })}
-                placeholder="e.g. Block A"
-              />
-            </div>
-            <div className="w-40 space-y-1">
-              <Label htmlFor={`block-rent-${blockIndex}`}>Rent override</Label>
-              <Input
-                id={`block-rent-${blockIndex}`}
-                type="number"
-                min={0}
-                disabled={disabled}
-                placeholder={baseRent ? String(baseRent) : "KES"}
-                value={block.rentOverride ?? ""}
-                onChange={(e) =>
-                  updateBlock(blockIndex, {
-                    rentOverride: e.target.value === "" ? null : Number(e.target.value),
-                  })
-                }
-              />
-            </div>
-            <div className="w-36 space-y-1">
-              <Label>Purpose</Label>
-              <Select
-                value={block.purpose ?? "inherit"}
-                disabled={disabled}
-                onValueChange={(val) =>
-                  updateBlock(blockIndex, {
-                    purpose: val === "inherit" ? null : (val as PropertyPurpose),
-                  })
-                }
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Inherit" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="inherit">Inherit</SelectItem>
-                  {PROPERTY_PURPOSES.map((p) => (
-                    <SelectItem key={p} value={p} className="capitalize">
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Switch
-                checked={block.duplex ?? false}
-                disabled={disabled}
-                onCheckedChange={() => toggleBlockDuplex(blockIndex)}
-              />
-              Duplex
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={`Remove ${block.name}`}
-              disabled={disabled}
-              onClick={() => removeBlock(blockIndex)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="space-y-2">
-            {block.floors.map((floor, floorIndex) => {
-              const preview = buildUnitNames(floor.level, floor.unitsPerFloor, floor.unitNames);
-              return (
-                <div
-                  key={floorIndex}
-                  className="grid grid-cols-[1fr_1fr_1fr_110px_70px_auto_auto] items-end gap-2"
+      {blocks.map((block, blockIndex) => {
+        const preview = previewBlock(block);
+        return (
+          <div key={blockIndex} className="space-y-2 rounded-md border border-border/70 p-3">
+            <div className="flex items-end gap-2">
+              <div className="flex-1 space-y-1">
+                <Label htmlFor={`block-name-${blockIndex}`}>Block name</Label>
+                <Input
+                  id={`block-name-${blockIndex}`}
+                  value={block.name}
+                  disabled={disabled}
+                  onChange={(e) => updateBlock(blockIndex, { name: e.target.value })}
+                  placeholder="e.g. Block A"
+                />
+              </div>
+              <div className="w-40 space-y-1">
+                <Label htmlFor={`block-rent-${blockIndex}`}>Rent override</Label>
+                <Input
+                  id={`block-rent-${blockIndex}`}
+                  type="number"
+                  min={0}
+                  disabled={disabled}
+                  placeholder={baseRent ? String(baseRent) : "KES"}
+                  value={block.rentOverride ?? ""}
+                  onChange={(e) =>
+                    updateBlock(blockIndex, {
+                      rentOverride: e.target.value === "" ? null : Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div className="w-36 space-y-1">
+                <Label>Purpose</Label>
+                <Select
+                  value={block.purpose ?? "inherit"}
+                  disabled={disabled}
+                  onValueChange={(val) =>
+                    updateBlock(blockIndex, {
+                      purpose: val === "inherit" ? null : (val as PropertyPurpose),
+                    })
+                  }
                 >
-                  <div className="space-y-1">
-                    <Label htmlFor={`floor-level-${blockIndex}-${floorIndex}`}>Floor</Label>
-                    <Input
-                      id={`floor-level-${blockIndex}-${floorIndex}`}
-                      type="number"
-                      min={-5}
-                      disabled={disabled}
-                      value={floor.level}
-                      onChange={(e) =>
-                        updateFloor(blockIndex, floorIndex, { level: Number(e.target.value) })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor={`floor-label-${blockIndex}-${floorIndex}`}>Label</Label>
-                    <Input
-                      id={`floor-label-${blockIndex}-${floorIndex}`}
-                      disabled={disabled}
-                      value={floor.label ?? ""}
-                      placeholder={floor.level === 0 ? "Ground" : `Floor ${floor.level}`}
-                      onChange={(e) =>
-                        updateFloor(blockIndex, floorIndex, { label: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor={`floor-units-${blockIndex}-${floorIndex}`}>Units</Label>
-                    <Input
-                      id={`floor-units-${blockIndex}-${floorIndex}`}
-                      type="number"
-                      min={0}
-                      disabled={disabled}
-                      value={floor.unitsPerFloor}
-                      onChange={(e) =>
-                        updateFloor(blockIndex, floorIndex, {
-                          unitsPerFloor: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Purpose</Label>
-                    <Select
-                      value={floor.purpose ?? "inherit"}
-                      disabled={disabled}
-                      onValueChange={(val) =>
-                        updateFloor(blockIndex, floorIndex, {
-                          purpose: val === "inherit" ? null : (val as PropertyPurpose),
-                        })
-                      }
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Inherit" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="inherit">Inherit</SelectItem>
-                        {PROPERTY_PURPOSES.map((p) => (
-                          <SelectItem key={p} value={p} className="capitalize">
-                            {p}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <span className="flex items-center gap-1 pb-2 text-xs text-muted-foreground">
-                    <Switch
-                      checked={floor.duplex === true}
-                      disabled={disabled}
-                      onCheckedChange={() => toggleFloorDuplex(blockIndex, floorIndex)}
-                    />
-                    Duplex
-                  </span>
-                  <span className="pb-2 text-xs text-muted-foreground" title={preview.join(", ")}>
-                    {preview.length > 0
-                      ? preview.length > 4
-                        ? `${preview.slice(0, 4).join(", ")}…`
-                        : preview.join(", ")
-                      : "—"}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Remove floor"
-                    disabled={disabled || block.floors.length === 1}
-                    onClick={() => removeFloor(blockIndex, floorIndex)}
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Inherit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inherit">Inherit</SelectItem>
+                    {PROPERTY_PURPOSES.map((p) => (
+                      <SelectItem key={p} value={p} className="capitalize">
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Switch
+                  checked={block.duplex ?? false}
+                  disabled={disabled}
+                  aria-label={`${block.name} duplex`}
+                  onCheckedChange={() => toggleBlockDuplex(blockIndex)}
+                />
+                Duplex
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={`Remove ${block.name}`}
+                disabled={disabled}
+                onClick={() => removeBlock(blockIndex)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              {block.floors.map((floor, floorIndex) => {
+                const resolved = preview.floors[floorIndex];
+                const layout = resolved?.layout;
+                const names = resolved?.names ?? [];
+                const floorLabelText = floor.level === 0 ? "ground floor" : `floor ${floor.level}`;
+                return (
+                  <div
+                    key={floorIndex}
+                    className="space-y-2 rounded-md border border-dashed border-border/60 p-2"
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              );
-            })}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={disabled}
-              onClick={() => addFloor(blockIndex)}
-            >
-              <Plus className="mr-1 h-3.5 w-3.5" /> Add floor
-            </Button>
+                    <div className="grid grid-cols-[1fr_1fr_1fr_110px_70px_auto_auto] items-end gap-2">
+                      <div className="space-y-1">
+                        <Label htmlFor={`floor-level-${blockIndex}-${floorIndex}`}>Floor</Label>
+                        <Input
+                          id={`floor-level-${blockIndex}-${floorIndex}`}
+                          type="number"
+                          min={-5}
+                          disabled={disabled}
+                          value={floor.level}
+                          onChange={(e) =>
+                            updateFloor(blockIndex, floorIndex, { level: Number(e.target.value) })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor={`floor-label-${blockIndex}-${floorIndex}`}>Label</Label>
+                        <Input
+                          id={`floor-label-${blockIndex}-${floorIndex}`}
+                          disabled={disabled}
+                          value={floor.label ?? ""}
+                          placeholder={floor.level === 0 ? "Ground" : `Floor ${floor.level}`}
+                          onChange={(e) =>
+                            updateFloor(blockIndex, floorIndex, { label: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor={`floor-units-${blockIndex}-${floorIndex}`}>
+                          {layout && layout.takenByBelow > 0 ? "Slots" : "Units"}
+                        </Label>
+                        <Input
+                          id={`floor-units-${blockIndex}-${floorIndex}`}
+                          type="number"
+                          min={0}
+                          disabled={disabled}
+                          value={floor.unitsPerFloor}
+                          onChange={(e) =>
+                            updateFloor(blockIndex, floorIndex, {
+                              unitsPerFloor: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Purpose</Label>
+                        <Select
+                          value={floor.purpose ?? "inherit"}
+                          disabled={disabled}
+                          onValueChange={(val) =>
+                            updateFloor(blockIndex, floorIndex, {
+                              purpose: val === "inherit" ? null : (val as PropertyPurpose),
+                            })
+                          }
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Inherit" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="inherit">Inherit</SelectItem>
+                            {PROPERTY_PURPOSES.map((p) => (
+                              <SelectItem key={p} value={p} className="capitalize">
+                                {p}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <span className="flex items-center gap-1 pb-2 text-xs text-muted-foreground">
+                        <Switch
+                          checked={floor.duplex === true}
+                          disabled={disabled || (!layout?.hasFloorAbove && floor.duplex !== true)}
+                          aria-label={`Duplex ${floorLabelText}`}
+                          title={
+                            layout?.hasFloorAbove
+                              ? "Make every unit on this floor a duplex"
+                              : "The top floor has no floor above to span into"
+                          }
+                          onCheckedChange={() => toggleFloorDuplex(blockIndex, floorIndex)}
+                        />
+                        Duplex
+                      </span>
+                      <span className="pb-2 text-xs text-muted-foreground" title={names.join(", ")}>
+                        {names.length > 0
+                          ? names.length > 4
+                            ? `${names.slice(0, 4).join(", ")}…`
+                            : names.join(", ")
+                          : "—"}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Remove floor"
+                        disabled={disabled || block.floors.length === 1}
+                        onClick={() => removeFloor(blockIndex, floorIndex)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {layout && layout.takenByBelow > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {layout.count === 0
+                          ? "Fully taken by duplex units from the floor below."
+                          : `${layout.count} own unit(s); ${layout.takenByBelow} slot(s) taken by duplex units from the floor below.`}
+                      </p>
+                    )}
+
+                    {layout &&
+                      !layout.hasFloorAbove &&
+                      (floor.duplex === true || floor.unitDuplex?.some((v) => v === true)) && (
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-destructive">
+                          The top floor cannot hold duplex units (there is no floor above).
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={disabled}
+                            onClick={() =>
+                              updateFloor(blockIndex, floorIndex, {
+                                duplex: floor.duplex === true ? false : floor.duplex,
+                                unitDuplex: [],
+                              })
+                            }
+                          >
+                            Make all simplex
+                          </Button>
+                        </div>
+                      )}
+
+                    {layout?.hasFloorAbove && names.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          Tap a unit to switch it between duplex and simplex.
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {names.map((unitName, unitIndex) => {
+                            const isDuplex = layout.duplexFlags[unitIndex] === true;
+                            return (
+                              <button
+                                key={`${unitName}-${unitIndex}`}
+                                type="button"
+                                disabled={disabled}
+                                aria-pressed={isDuplex}
+                                aria-label={`${unitName}: ${isDuplex ? "duplex" : "simplex"}`}
+                                onClick={() =>
+                                  toggleUnitDuplex(blockIndex, floorIndex, unitIndex, isDuplex)
+                                }
+                                className={`rounded-md border px-2 py-0.5 text-xs transition-colors disabled:opacity-50 ${
+                                  isDuplex
+                                    ? "border-primary bg-primary/10 text-primary"
+                                    : "border-border text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                {unitName}
+                                <span className="ml-1 opacity-70">{isDuplex ? "D" : "S"}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {layout && layout.duplexCount > 0 && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Label
+                          htmlFor={`floor-upper-${blockIndex}-${floorIndex}`}
+                          className="text-xs"
+                        >
+                          Floor above these {layout.duplexCount} duplex unit(s)
+                        </Label>
+                        <Select
+                          value={layout.upperFloorMode}
+                          disabled={disabled}
+                          onValueChange={(val) =>
+                            updateFloor(blockIndex, floorIndex, {
+                              upperFloorMode: val as UpperFloorMode,
+                            })
+                          }
+                        >
+                          <SelectTrigger
+                            id={`floor-upper-${blockIndex}-${floorIndex}`}
+                            className="h-8 w-64"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {UPPER_FLOOR_MODES.map((mode) => (
+                              <SelectItem key={mode} value={mode}>
+                                {UPPER_FLOOR_MODE_LABELS[mode]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={disabled}
+                onClick={() => addFloor(blockIndex)}
+              >
+                <Plus className="mr-1 h-3.5 w-3.5" /> Add floor
+              </Button>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={addBlock}>
         <Plus className="mr-1 h-3.5 w-3.5" /> Add block
@@ -436,51 +611,64 @@ export function PropertyStructurePreview({ blocks }: PropertyStructurePreviewPro
 
   return (
     <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
-      {blocks.map((block, blockIndex) => (
-        <div key={block.id ?? blockIndex} className="space-y-3 p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{block.name || `Block ${blockIndex + 1}`}</span>
-            {block.purpose != null && (
-              <Badge variant="outline" className="capitalize text-xs">
-                {block.purpose}
-              </Badge>
-            )}
-            {block.rentOverride != null && (
-              <Badge variant="secondary">Rent {formatKES(block.rentOverride)}</Badge>
-            )}
+      {blocks.map((block, blockIndex) => {
+        const preview = previewBlock(block);
+        return (
+          <div key={block.id ?? blockIndex} className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">{block.name || `Block ${blockIndex + 1}`}</span>
+              {block.purpose != null && (
+                <Badge variant="outline" className="capitalize text-xs">
+                  {block.purpose}
+                </Badge>
+              )}
+              {block.rentOverride != null && (
+                <Badge variant="secondary">Rent {formatKES(block.rentOverride)}</Badge>
+              )}
+            </div>
+            <ul className="space-y-1.5">
+              {block.floors.map((floor, floorIndex) => {
+                const resolved = preview.floors[floorIndex];
+                const names = resolved?.names ?? [];
+                const duplexCount = resolved?.layout.duplexCount ?? 0;
+                const takenByBelow = resolved?.layout.takenByBelow ?? 0;
+                const floorLabel =
+                  floor.label?.trim() || (floor.level === 0 ? "Ground" : `Floor ${floor.level}`);
+                return (
+                  <li
+                    key={floor.id ?? floorIndex}
+                    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm"
+                  >
+                    <span className="text-muted-foreground">
+                      {floorLabel}
+                      {floor.purpose != null && (
+                        <span className="ml-2 text-xs capitalize">· {floor.purpose}</span>
+                      )}
+                      {floor.rentOverride != null && (
+                        <span className="ml-2 text-xs">· rent {formatKES(floor.rentOverride)}</span>
+                      )}
+                      {duplexCount > 0 && (
+                        <span className="ml-2 text-xs">
+                          · {duplexCount} duplex, {names.length - duplexCount} simplex
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {names.length === 0
+                        ? takenByBelow > 0
+                          ? "Taken by duplex units below"
+                          : "No units"
+                        : `${names.length} ${names.length === 1 ? "unit" : "units"} · ${
+                            names.length > 6 ? `${names.slice(0, 6).join(", ")}…` : names.join(", ")
+                          }`}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-          <ul className="space-y-1.5">
-            {block.floors.map((floor, floorIndex) => {
-              const names = buildUnitNames(floor.level, floor.unitsPerFloor, floor.unitNames);
-              const floorLabel =
-                floor.label?.trim() || (floor.level === 0 ? "Ground" : `Floor ${floor.level}`);
-              return (
-                <li
-                  key={floor.id ?? floorIndex}
-                  className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm"
-                >
-                  <span className="text-muted-foreground">
-                    {floorLabel}
-                    {floor.purpose != null && (
-                      <span className="ml-2 text-xs capitalize">· {floor.purpose}</span>
-                    )}
-                    {floor.rentOverride != null && (
-                      <span className="ml-2 text-xs">· rent {formatKES(floor.rentOverride)}</span>
-                    )}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {names.length === 0
-                      ? "No units"
-                      : `${names.length} ${names.length === 1 ? "unit" : "units"} · ${
-                          names.length > 6 ? `${names.slice(0, 6).join(", ")}…` : names.join(", ")
-                        }`}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

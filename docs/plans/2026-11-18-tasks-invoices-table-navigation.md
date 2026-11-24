@@ -1,6 +1,6 @@
 # Tasks 403 · Invoice States · Clickable Table Titles
 
-**Status:** Proposed — not implemented
+**Status:** Fix 1 implemented · Fix 2 R1 implemented (R2–R4 pending, see `docs/runbooks/invoice-states.md`) · Fix 3 not started
 **Date:** 2026-11-18 · **Revised:** v2 (decisions locked)
 **Repo:** `keja-yangu` (Next.js App Router + Mongoose)
 **Owners:** Orchestrix (routing) · Phase 3 implementers per §6

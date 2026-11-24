@@ -1,6 +1,11 @@
 import type { BlockInputPayload, FloorInputPayload } from "@/hooks/use-properties";
+import {
+  buildLayoutUnitNames,
+  normalizeUpperFloorMode,
+  resolveBlockLayout,
+  type UpperFloorMode,
+} from "@/lib/duplex-layout";
 import { MAX_UNITS_PER_PROPERTY } from "@/lib/schemas/structure";
-import { buildDuplexUnitNames, buildUnitNames } from "@/lib/unit-naming";
 
 export interface BulkFloorSpec {
   floorCount: number;
@@ -10,6 +15,8 @@ export interface BulkFloorSpec {
   floorRentOverride?: number | null;
   customUnitNames?: string[];
   duplex?: boolean | null;
+  /** What duplexes do to the floor above (keep | consume | full). */
+  upperFloorMode?: UpperFloorMode | null;
 }
 
 export interface BulkBlockSpec {
@@ -22,7 +29,13 @@ export interface BulkBlockSpec {
 export interface BulkGenerationInput {
   blocks: BulkBlockSpec[];
   existingUnitCount?: number;
-  mode?: "replace" | "append";
+  /** Names of blocks already on the property; generated blocks must not reuse them. */
+  existingBlockNames?: string[];
+  /**
+   * Bulk generation only ever appends: existing blocks, floors and units are
+   * never replaced. Kept for call-site compatibility; "append" is the only mode.
+   */
+  mode?: "append";
 }
 
 export class BulkStructureError extends Error {
@@ -32,6 +45,9 @@ export class BulkStructureError extends Error {
 export function validateBulkGeneration(input: BulkGenerationInput): string[] {
   const errors: string[] = [];
   const seenNames = new Set<string>();
+  const existingNames = new Set(
+    (input.existingBlockNames ?? []).map((name) => name.trim().toLowerCase()).filter(Boolean),
+  );
 
   for (const block of input.blocks) {
     const name = block.name.trim();
@@ -40,6 +56,11 @@ export function validateBulkGeneration(input: BulkGenerationInput): string[] {
     } else {
       const key = name.toLowerCase();
       if (seenNames.has(key)) errors.push(`Duplicate block name: ${name}`);
+      if (existingNames.has(key)) {
+        errors.push(
+          `A block named "${name}" already exists. Choose a new name — bulk generate only adds blocks.`,
+        );
+      }
       seenNames.add(key);
     }
 
@@ -58,12 +79,21 @@ export function validateBulkGeneration(input: BulkGenerationInput): string[] {
     }
   }
 
-  // Cap check against existing + generated units
-  const generatedUnits = input.blocks.reduce((total, block) => {
-    const spec = block.floors;
-    const floors = spec.includeGroundFloor ? spec.floorCount : spec.floorCount;
-    return total + floors * spec.unitsPerFloor;
-  }, 0);
+  // Cap check against existing + generated units. Duplexes that take slots on
+  // the floor above are accounted for, so the count matches what gets created.
+  let generatedUnits = 0;
+  if (errors.length === 0) {
+    for (const block of input.blocks) {
+      try {
+        generatedUnits += generateBulkFloors(block.floors).reduce(
+          (sum, floor) => sum + (floor.unitNames?.length ?? 0),
+          0,
+        );
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : "Invalid floor layout.");
+      }
+    }
+  }
   const existing = input.existingUnitCount ?? 0;
   if (existing + generatedUnits > MAX_UNITS_PER_PROPERTY) {
     errors.push(
@@ -88,54 +118,45 @@ export function generateBulkFloors(spec: BulkFloorSpec): FloorInputPayload[] {
     throw new BulkStructureError("A floor may have at most 200 units.");
   }
 
-  const floors: FloorInputPayload[] = [];
-  const startLevel = spec.startLevel ?? 1;
-
   if (spec.floorCount <= 0) return [];
 
+  const startLevel = spec.startLevel ?? 1;
   const upperFloorCount = spec.floorCount - (spec.includeGroundFloor ? 1 : 0);
+  const levels: number[] = [];
+  if (spec.includeGroundFloor) levels.push(0);
+  for (let i = 0; i < upperFloorCount; i++) levels.push(startLevel + i);
 
-  if (spec.includeGroundFloor) {
-    // Ground floor: duplex only if there's at least one upper floor to span into.
-    const hasUpperFloor = upperFloorCount > 0;
-    const isGroundDuplex = spec.duplex === true && hasUpperFloor;
-    const groundNames = isGroundDuplex
-      ? buildDuplexUnitNames(0, startLevel, spec.unitsPerFloor, spec.customUnitNames)
-      : buildUnitNames(0, spec.unitsPerFloor, spec.customUnitNames);
-    floors.push({
-      level: 0,
-      label: "",
-      unitsPerFloor: spec.unitsPerFloor,
-      unitNames: groundNames,
-      rentOverride: spec.floorRentOverride ?? null,
-      purpose: null,
-      duplex: isGroundDuplex ? true : spec.duplex === true ? false : (spec.duplex ?? null),
-    });
-  }
+  const upperFloorMode = normalizeUpperFloorMode(spec.upperFloorMode);
 
-  for (let i = 0; i < upperFloorCount; i++) {
-    const level = startLevel + i;
-    // A floor can only be duplex if there's a floor above to span into.
-    const isLastFloor = i === upperFloorCount - 1;
-    const canBeDuplex = !isLastFloor;
+  // A floor can only be duplex if there is a floor above to span into, so the
+  // top floor is explicitly simplex when the block is duplex.
+  const floors: FloorInputPayload[] = levels.map((level, index) => {
+    const canBeDuplex = index < levels.length - 1;
     const isDuplex = spec.duplex === true && canBeDuplex;
-
-    const nextLevel = level + 1;
-    const names = isDuplex
-      ? buildDuplexUnitNames(level, nextLevel, spec.unitsPerFloor, spec.customUnitNames)
-      : buildUnitNames(level, spec.unitsPerFloor, spec.customUnitNames);
-    floors.push({
+    return {
       level,
       label: "",
       unitsPerFloor: spec.unitsPerFloor,
-      unitNames: names,
+      unitNames: [],
       rentOverride: spec.floorRentOverride ?? null,
       purpose: null,
       duplex: isDuplex ? true : spec.duplex === true ? false : (spec.duplex ?? null),
-    });
-  }
+      upperFloorMode,
+    };
+  });
 
-  return floors;
+  // Resolve the real layout (duplexes may take slots above) so the names and
+  // counts shown before saving are exactly what the server will create.
+  const layouts = resolveBlockLayout(floors, spec.duplex === true);
+  return floors.map((floor, index) => ({
+    ...floor,
+    unitNames: buildLayoutUnitNames(
+      floor.level,
+      index + 1 < floors.length ? floors[index + 1].level : null,
+      layouts[index].duplexFlags,
+      spec.customUnitNames,
+    ),
+  }));
 }
 
 export function generateBulkBlock(spec: BulkBlockSpec): BlockInputPayload {

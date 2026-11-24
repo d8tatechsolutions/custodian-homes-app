@@ -364,10 +364,11 @@ describe("GET /api/v1/invoices", () => {
     );
     expect(res.status).toBe(200);
     const filter = invoiceStub.find.mock.calls[0][0] as {
-      status: string;
+      status: unknown;
       dueDate: { $lt: Date };
     };
-    expect(filter.status).toBe("pending");
+    // R1: pending and new are the same open state.
+    expect(filter.status).toEqual({ $in: ["pending", "new"] });
     expect(filter.dueDate.$lt).toBeInstanceOf(Date);
     expect(notifyOverdueInvoicesMock).toHaveBeenCalledTimes(1);
     expect(notifyOverdueInvoicesMock).toHaveBeenCalledWith(expect.any(Date), {});
@@ -432,7 +433,7 @@ describe("GET /api/v1/invoices", () => {
         tenantId: "t",
         propertyId: "p",
         leaseId: "l",
-        status: "pending",
+        status: { $in: ["pending", "new"] },
       }),
     );
   });
@@ -647,7 +648,8 @@ describe("POST /api/v1/invoices", () => {
       buildRequest("/api/v1/invoices", {
         method: "POST",
         token: signToken(ADMIN_ID),
-        body: { leaseId: LEASE_ID },
+        // "Issue now": issued invoices get a number (drafts do not).
+        body: { leaseId: LEASE_ID, status: "new" },
       }),
     );
     expect(res.status).toBe(201);
@@ -668,12 +670,110 @@ describe("POST /api/v1/invoices", () => {
         period: expectedPeriod,
         amountDue: 25000,
         amountPaid: 0,
+        // R1 writers still emit the legacy stored value for "Unpaid".
         status: "pending",
         dueDate: computeDueDate(expectedPeriod),
       }),
     );
     const body = await json(res);
     expect((body.data as { invoiceNumber?: string }).invoiceNumber).toBe("INV-000000-0000");
+  });
+
+  it("201 saves a draft template by default: no number, no issue date, no counter bump", async () => {
+    mockScopedAdmin();
+    leaseStub.findById.mockReturnValue(buildQuery(inScopeLease()));
+    invoiceStub.create.mockResolvedValue({ _id: makeObjectId("new-inv") });
+    invoiceStub.findById.mockReturnValue(
+      buildQuery(makeInvoice({ _id: makeObjectId("new-inv"), status: "draft", invoiceNumber: "" })),
+    );
+
+    const res = await POST(
+      buildRequest("/api/v1/invoices", {
+        method: "POST",
+        token: signToken(ADMIN_ID),
+        body: { leaseId: LEASE_ID },
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(user.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(invoiceStub.create).toHaveBeenCalledWith(
+      expect.objectContaining({ invoiceNumber: "", status: "draft", issuedAt: null }),
+    );
+  });
+
+  it("uses the chosen billed month and due date", async () => {
+    mockScopedAdmin();
+    leaseStub.findById.mockReturnValue(buildQuery(inScopeLease()));
+    invoiceStub.create.mockResolvedValue({ _id: makeObjectId("new-inv") });
+    invoiceStub.findById.mockReturnValue(buildQuery(makeInvoice({ _id: makeObjectId("new-inv") })));
+
+    const res = await POST(
+      buildRequest("/api/v1/invoices", {
+        method: "POST",
+        token: signToken(ADMIN_ID),
+        body: { leaseId: LEASE_ID, period: "2026-01", dueDate: "2026-02-10" },
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(invoiceStub.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        period: "2026-01",
+        dueDate: new Date(Date.UTC(2026, 1, 10)),
+      }),
+    );
+  });
+
+  it("400 for a future billed month", async () => {
+    mockScopedAdmin();
+    const [year, month] = currentPeriod().split("-").map(Number);
+    const next = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
+    const res = await POST(
+      buildRequest("/api/v1/invoices", {
+        method: "POST",
+        token: signToken(ADMIN_ID),
+        body: { leaseId: LEASE_ID, period: next },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(invoiceStub.create).not.toHaveBeenCalled();
+  });
+
+  it("400 for a due date before the billed month", async () => {
+    mockScopedAdmin();
+    const res = await POST(
+      buildRequest("/api/v1/invoices", {
+        method: "POST",
+        token: signToken(ADMIN_ID),
+        body: { leaseId: LEASE_ID, period: "2026-03", dueDate: "2026-02-28" },
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("splits a manual invoice into rent and service charge", async () => {
+    mockScopedAdmin();
+    tenantStub.findById.mockReturnValue(
+      buildQuery(makeTenant({ _id: TENANT_ID, ownerId: OWNER_ID, propertyId: PROPERTY_ID })),
+    );
+    invoiceStub.create.mockResolvedValue({ _id: makeObjectId("new-inv") });
+    invoiceStub.findById.mockReturnValue(buildQuery(makeInvoice({ _id: makeObjectId("new-inv") })));
+
+    const res = await POST(
+      buildRequest("/api/v1/invoices", {
+        method: "POST",
+        token: signToken(ADMIN_ID),
+        body: {
+          tenantId: TENANT_ID,
+          propertyId: PROPERTY_ID,
+          amountDue: 30000,
+          serviceChargeAmount: 5000,
+        },
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(invoiceStub.create).toHaveBeenCalledWith(
+      expect.objectContaining({ amountDue: 30000, rentAmount: 25000, serviceChargeAmount: 5000 }),
+    );
   });
 
   it("201 manual invoice without a lease", async () => {

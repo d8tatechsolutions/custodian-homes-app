@@ -1,10 +1,12 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
+import { BulkGenerateDialog, nextBlockName } from "@/components/property/BulkGenerateDialog";
 import {
   PropertyStructureEditor,
   PropertyStructurePreview,
   summarizeStructure,
+  validateBlocks,
 } from "@/components/property/PropertyStructureEditor";
 import type { BlockInputPayload } from "@/hooks/use-properties";
 
@@ -137,5 +139,126 @@ describe("PropertyStructureEditor", () => {
 
     expect(screen.getByLabelText("Floor")).toBeInTheDocument();
     expect(screen.queryByLabelText("Level")).not.toBeInTheDocument();
+  });
+});
+
+describe("PropertyStructureEditor — duplex / simplex enforcement", () => {
+  const twoFloors = (floor3: Partial<BlockInputPayload["floors"][number]> = {}) =>
+    block({
+      floors: [
+        { level: 3, unitsPerFloor: 2, ...floor3 },
+        { level: 4, unitsPerFloor: 2 },
+      ],
+    });
+
+  it("toggles a single unit to duplex via a per-unit override", () => {
+    const onChange = vi.fn();
+    render(<PropertyStructureEditor blocks={[twoFloors()]} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "3A: simplex" }));
+
+    const next = onChange.mock.calls[0][0] as BlockInputPayload[];
+    expect(next[0].floors[0].unitDuplex).toEqual([true]);
+  });
+
+  it("shows mixed duplex and simplex names on one floor", () => {
+    render(
+      <PropertyStructureEditor
+        blocks={[twoFloors({ unitDuplex: [true, false] })]}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "3A-4A: duplex" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "3B: simplex" })).toBeInTheDocument();
+  });
+
+  it("does not offer per-unit duplex on the top floor", () => {
+    render(<PropertyStructureEditor blocks={[twoFloors()]} onChange={() => {}} />);
+    expect(screen.queryByRole("button", { name: "4A: simplex" })).not.toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Duplex floor 4" })).toBeDisabled();
+  });
+
+  it("offers the upper-floor setting only when a floor has duplexes", () => {
+    const { rerender } = render(
+      <PropertyStructureEditor blocks={[twoFloors()]} onChange={() => {}} />,
+    );
+    expect(screen.queryByText(/Floor above these/)).not.toBeInTheDocument();
+    rerender(
+      <PropertyStructureEditor blocks={[twoFloors({ duplex: true })]} onChange={() => {}} />,
+    );
+    expect(screen.getByText("Floor above these 2 duplex unit(s)")).toBeInTheDocument();
+  });
+
+  it("counts consumed slots and blocks an invalid consume layout", () => {
+    const consume = twoFloors({ duplex: true, upperFloorMode: "consume" });
+    expect(summarizeStructure([consume]).units).toBe(2); // 2 duplexes + 0 own above
+    expect(validateBlocks([consume])).toEqual([]);
+
+    const tooFew = block({
+      floors: [
+        { level: 3, unitsPerFloor: 2, duplex: true, upperFloorMode: "consume" },
+        { level: 4, unitsPerFloor: 1 },
+      ],
+    });
+    expect(validateBlocks([tooFew])[0]).toMatch(/1 unit slot\(s\) but 2 duplex/);
+  });
+
+  it("blocks saving a top floor marked duplex and offers a fix", () => {
+    const onChange = vi.fn();
+    const stuck = block({ floors: [{ level: 1, unitsPerFloor: 1, duplex: true }] });
+    expect(validateBlocks([stuck])[0]).toMatch(/no floor above/);
+
+    render(<PropertyStructureEditor blocks={[stuck]} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Make all simplex" }));
+    const next = onChange.mock.calls[0][0] as BlockInputPayload[];
+    expect(next[0].floors[0]).toMatchObject({ duplex: false, unitDuplex: [] });
+  });
+
+  it("flags duplicate unit names across floors of one block", () => {
+    const dup = block({
+      floors: [
+        { level: 1, unitsPerFloor: 1, unitNames: ["Shop"] },
+        { level: 2, unitsPerFloor: 1, unitNames: ["Shop"] },
+      ],
+    });
+    expect(validateBlocks([dup])).toContain('Duplicate unit name "Shop" in Block A.');
+  });
+});
+
+describe("BulkGenerateDialog — append only", () => {
+  it("adds a new block next to existing ones and never replaces them", () => {
+    const onChange = vi.fn();
+    const existing = block({ floors: [{ level: 0, unitsPerFloor: 2 }] });
+    render(
+      <BulkGenerateDialog open onOpenChange={() => {}} blocks={[existing]} onChange={onChange} />,
+    );
+
+    expect(screen.getByLabelText("Block name")).toHaveValue("Block B");
+    fireEvent.click(screen.getByRole("button", { name: "Add block" }));
+
+    const next = onChange.mock.calls[0][0] as BlockInputPayload[];
+    expect(next).toHaveLength(2);
+    expect(next[0]).toBe(existing);
+    expect(next[1].name).toBe("Block B");
+  });
+
+  it("refuses a block name that already exists", () => {
+    const onChange = vi.fn();
+    render(
+      <BulkGenerateDialog open onOpenChange={() => {}} blocks={[block()]} onChange={onChange} />,
+    );
+    fireEvent.change(screen.getByLabelText("Block name"), { target: { value: "block a" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add block" }));
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText(/already exists/)).toBeInTheDocument();
+  });
+
+  it("names the next free block letter", () => {
+    expect(nextBlockName([block({ name: "Block A" }), block({ name: "Block B" })])).toBe("Block C");
+    expect(nextBlockName([])).toBe("Block A");
   });
 });

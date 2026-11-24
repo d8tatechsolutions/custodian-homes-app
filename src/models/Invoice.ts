@@ -35,7 +35,8 @@ export interface IInvoice {
   amountPaid: number;
   status: InvoiceStatus;
   dueDate: Date;
-  issuedAt: Date;
+  /** Set when the invoice is issued; null for a draft (template). */
+  issuedAt: Date | null;
   paidAt?: Date;
   method?: InvoiceMethod;
   notes?: string;
@@ -55,7 +56,8 @@ export interface IInvoice {
 
 const invoiceSchema = new Schema<IInvoice>(
   {
-    invoiceNumber: { type: String, required: true },
+    // Assigned when the invoice is issued. Drafts are templates and carry "".
+    invoiceNumber: { type: String, default: "" },
     tenantId: { type: String, required: true },
     propertyId: { type: String, required: true },
     leaseId: { type: String, default: "" },
@@ -116,16 +118,34 @@ invoiceSchema.index({ propertyId: 1, period: 1 });
 invoiceSchema.index({ unitId: 1, period: 1 });
 invoiceSchema.index({ status: 1, dueDate: 1 });
 invoiceSchema.index({ ownerId: 1, status: 1 });
-// Invoice numbers are unique among live invoices only.
+// Invoice numbers are unique among live, issued invoices. Drafts carry no
+// number ("") and are excluded, so any number of draft templates can coexist.
+//
+// Explicit names: these replace the legacy `invoiceNumber_1` and
+// `leaseId_1_period_1` indexes (same keys, narrower filters). Distinct names let
+// autoIndex build them without an options conflict; the legacy indexes are
+// dropped by scripts/migrate-invoice-indexes.ts (R1, plan §2.4).
 invoiceSchema.index(
   { invoiceNumber: 1 },
-  { unique: true, partialFilterExpression: { deletedAt: null } },
+  {
+    name: "invoiceNumber_issued_unique",
+    unique: true,
+    partialFilterExpression: { deletedAt: null, invoiceNumber: { $gt: "" } },
+  },
 );
-// Generation idempotency: one live invoice per lease per period (manual
-// invoices never set leaseId, so they are excluded via the partial filter).
+// Generation idempotency: one live issued invoice per lease per period (manual
+// invoices never set leaseId; drafts carry no number — both are excluded).
 invoiceSchema.index(
   { leaseId: 1, period: 1 },
-  { unique: true, partialFilterExpression: { leaseId: { $gt: "" }, deletedAt: null } },
+  {
+    name: "leaseId_period_issued_unique",
+    unique: true,
+    partialFilterExpression: {
+      leaseId: { $gt: "" },
+      deletedAt: null,
+      invoiceNumber: { $gt: "" },
+    },
+  },
 );
 softDeletePlugin(invoiceSchema);
 

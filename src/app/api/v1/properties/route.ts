@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { normalizeAmenities } from "@/lib/amenities";
 import { DEFAULT_PROPERTY_PURPOSE, PROPERTY_PURPOSES } from "@/lib/domain-enums";
+import { normalizeUnitDuplex, normalizeUpperFloorMode } from "@/lib/duplex-layout";
 import {
   getAssignedPropertyIds,
   getManagedOwnerId,
@@ -23,7 +24,7 @@ import {
 } from "@/lib/property-staff";
 import { isActivePropertyTypeKey } from "@/lib/property-type-store";
 import { blockInput, MAX_UNITS_PER_PROPERTY } from "@/lib/schemas/structure";
-import { buildUnitInserts, countRequestedUnits } from "@/lib/units";
+import { buildUnitInserts, countRequestedUnits, validateBlockLayouts } from "@/lib/units";
 import { Block } from "@/models/Block";
 import { ManagementAssignment } from "@/models/ManagementAssignment";
 import { Property } from "@/models/Property";
@@ -358,6 +359,10 @@ export async function POST(request: NextRequest) {
   }
 
   const inputBlocks = parsed.data.blocks ?? [];
+  const layoutError = validateBlockLayouts(inputBlocks);
+  if (layoutError) {
+    return NextResponse.json({ error: layoutError }, { status: 400 });
+  }
   if (countRequestedUnits(inputBlocks) > MAX_UNITS_PER_PROPERTY) {
     return NextResponse.json(
       { error: `A property may have at most ${MAX_UNITS_PER_PROPERTY} units` },
@@ -393,6 +398,8 @@ export async function POST(request: NextRequest) {
         rentOverride: floor.rentOverride ?? null,
         purpose: floor.purpose ?? null,
         duplex: floor.duplex ?? null,
+        unitDuplex: normalizeUnitDuplex(floor.unitDuplex, floor.unitsPerFloor ?? 0),
+        upperFloorMode: normalizeUpperFloorMode(floor.upperFloorMode),
       })),
     })),
   });

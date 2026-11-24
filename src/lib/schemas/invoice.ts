@@ -1,8 +1,18 @@
 import { z } from "zod";
-import { INVOICE_METHODS, PERIOD_REGEX } from "@/lib/invoicing";
+import { INVOICE_METHODS, INVOICE_STATUSES, PERIOD_REGEX } from "@/lib/invoicing";
 import { hex24 } from "./lease";
 
 export const dateString = z.string().regex(PERIOD_REGEX, "Period must match YYYY-MM");
+
+/** Calendar date `YYYY-MM-DD` (from `<input type="date">`) or a full ISO datetime. */
+export const dueDateString = z
+  .string()
+  .refine(
+    (value) =>
+      (/^d{4}-d{2}-d{2}$/.test(value) || !Number.isNaN(Date.parse(value))) &&
+      !Number.isNaN(new Date(value).getTime()),
+    "Due date must be a valid date",
+  );
 
 // Manual create: with `leaseId` the server derives tenant/property/owner/amount
 // from the lease; without it, `tenantId` + `propertyId` become required. A
@@ -13,12 +23,40 @@ export const invoiceInput = z
     tenantId: z.string().regex(hex24).optional(),
     propertyId: z.string().regex(hex24).optional(),
     amountDue: z.coerce.number().positive().optional(),
-    status: z.enum(["draft", "pending"]).optional(),
+    /** Manual invoices only: the service-charge part of `amountDue`. */
+    serviceChargeAmount: z.coerce.number().nonnegative().optional(),
+    /** Billed month (`YYYY-MM`); defaults to the current month. Future months are rejected. */
+    period: dateString.optional(),
+    /** Defaults to the 5th of the month after the billed month. */
+    dueDate: dueDateString.optional(),
+    /**
+     * `draft` saves a template (no number, not payable, tenant-invisible).
+     * `new` / `pending` issue immediately with a reserved number.
+     */
+    status: z.enum(["draft", "pending", "new"]).optional(),
     method: z.enum(INVOICE_METHODS).optional(),
     notes: z.string().optional(),
   })
   .superRefine((data, ctx) => {
+    if (
+      data.serviceChargeAmount != null &&
+      data.amountDue != null &&
+      data.serviceChargeAmount > data.amountDue
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["serviceChargeAmount"],
+        message: "Service charge cannot exceed the amount due",
+      });
+    }
     if (data.leaseId) {
+      if (data.serviceChargeAmount != null) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["serviceChargeAmount"],
+          message: "The service charge is derived from the lease's unit",
+        });
+      }
       if (data.tenantId) {
         ctx.addIssue({
           code: "custom",
@@ -58,13 +96,38 @@ export const invoiceInput = z
     }
   });
 
-// PATCH: draft-only edits; identity fields (invoiceNumber/tenantId/propertyId/
-// leaseId/ownerId/period) and audit stamps are immutable and stripped here.
-export const invoiceUpdate = z.object({
-  status: z.enum(["draft", "pending"]).optional(),
-  amountDue: z.coerce.number().positive().optional(),
-  method: z.enum(INVOICE_METHODS).optional(),
-  notes: z.string().optional(),
+// PATCH: draft-only edits (issued invoices are immutable). Identity fields
+// (invoiceNumber/tenantId/propertyId/leaseId/ownerId) and audit stamps are
+// stripped here. `status` is accepted only so a status change can be rejected
+// explicitly: issuing is `POST /invoices/[id]/issue`, and an issued invoice can
+// never return to draft.
+export const invoiceUpdate = z
+  .object({
+    status: z.enum(INVOICE_STATUSES).optional(),
+    amountDue: z.coerce.number().positive().optional(),
+    serviceChargeAmount: z.coerce.number().nonnegative().optional(),
+    period: dateString.optional(),
+    dueDate: dueDateString.optional(),
+    method: z.enum(INVOICE_METHODS).optional(),
+    notes: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.serviceChargeAmount != null &&
+      data.amountDue != null &&
+      data.serviceChargeAmount > data.amountDue
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["serviceChargeAmount"],
+        message: "Service charge cannot exceed the amount due",
+      });
+    }
+  });
+
+// Duplicate an invoice into a new draft template, optionally for another month.
+export const invoiceDuplicateInput = z.object({
+  period: dateString.optional(),
 });
 
 // Future-period rejection is route-level (it needs `currentPeriod`).
@@ -101,5 +164,6 @@ export const invoiceMarkPaidInput = z
 
 export type InvoiceInput = z.infer<typeof invoiceInput>;
 export type InvoiceUpdate = z.infer<typeof invoiceUpdate>;
+export type InvoiceDuplicateInput = z.infer<typeof invoiceDuplicateInput>;
 export type InvoiceGenerateInput = z.infer<typeof invoiceGenerateInput>;
 export type InvoiceMarkPaidInput = z.infer<typeof invoiceMarkPaidInput>;
