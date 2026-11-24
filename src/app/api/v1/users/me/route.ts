@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/app/api/v1/_helpers";
-import { decryptField, encryptField } from "@/lib/crypto";
+import { decryptFieldOrEmpty, encryptField } from "@/lib/crypto";
 import { connectToDatabase } from "@/lib/mongoose";
 import { authenticate, requirePermission } from "@/lib/permissions";
 import { normalizeNationalId } from "@/lib/phone";
@@ -31,7 +31,7 @@ function serialize(user: ProfileDoc) {
     role: user.role ?? "",
     phone: user.phone ?? "",
     whatsapp: user.whatsapp ?? "",
-    nationalId: decryptField(user.nationalId ?? ""),
+    nationalId: decryptFieldOrEmpty(user.nationalId ?? ""),
     userCode: user.userCode ?? "",
   };
 }

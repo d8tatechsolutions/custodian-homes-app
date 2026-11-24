@@ -65,3 +65,23 @@ export function decryptField(value: string): string {
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
 }
+
+/**
+ * Decrypts a stored value for display, returning `""` when the ciphertext
+ * cannot be read (it was written under a different key, or is corrupt).
+ *
+ * Use this where an unreadable value must not break the whole response — e.g.
+ * the session endpoint, where a throw would log the user out. The user then
+ * sees an empty field and can re-enter it, which re-encrypts under the current
+ * key. A missing or malformed key is a deploy error and still throws.
+ */
+export function decryptFieldOrEmpty(value: string): string {
+  if (!isEncrypted(value)) return value;
+  getKey();
+  try {
+    return decryptField(value);
+  } catch {
+    console.warn("[crypto] stored value could not be decrypted with the current key");
+    return "";
+  }
+}

@@ -61,6 +61,25 @@ describe("GET /api/v1/users/me", () => {
     const body = await json(res);
     expect(body.data).toMatchObject({ nationalId: "12345678" });
   });
+
+  it("returns an empty national id (not an error) when it was encrypted under another key", async () => {
+    const original = process.env.FIELD_ENCRYPTION_KEY;
+    process.env.FIELD_ENCRYPTION_KEY = "b".repeat(64);
+    const foreign = encryptField("12345678");
+    process.env.FIELD_ENCRYPTION_KEY = "c".repeat(64);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      user.findById.mockReturnValue(buildQuery(tenantDoc({ nationalId: foreign })));
+      const res = await GET(buildRequest("/api/v1/users/me", { token: signToken(USER_ID) }));
+      expect(res.status).toBe(200);
+      const body = await json(res);
+      expect(body.data).toMatchObject({ id: USER_ID, nationalId: "" });
+    } finally {
+      warn.mockRestore();
+      if (original === undefined) delete process.env.FIELD_ENCRYPTION_KEY;
+      else process.env.FIELD_ENCRYPTION_KEY = original;
+    }
+  });
 });
 
 describe("PATCH /api/v1/users/me", () => {
