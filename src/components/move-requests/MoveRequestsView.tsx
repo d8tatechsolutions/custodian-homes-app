@@ -3,6 +3,7 @@
 import { ArrowLeftRight, Clock, LogIn, LogOut } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { TitleCell } from "@/components/common/TitleCell";
 
 import { DashboardShell } from "@/components/DashboardShell";
 import { SearchInput } from "@/components/SearchInput";
@@ -163,7 +164,36 @@ export function MoveRequestsView({ nav, roleName, canDecide = true }: Props) {
             ) : (
               visible.map((mr) => (
                 <TableRow key={mr._id}>
-                  <TableCell className="font-medium capitalize">{mr.type}</TableCell>
+                  <TableCell className="font-medium capitalize">
+                    <TitleCell
+                      className="capitalize"
+                      detail={{
+                        title: `Move ${mr.type} request`,
+                        subtitle: mr.propertyTitle || undefined,
+                        fields: [
+                          {
+                            label: "Unit",
+                            value: mr.unitName
+                              ? `${mr.unitName}${mr.blockName ? ` · Block ${mr.blockName}` : ""}`
+                              : "",
+                          },
+                          { label: "Property", value: mr.propertyTitle || "" },
+                          {
+                            label: "Requested by",
+                            value: mr.requestedByName || mr.requestedByRole,
+                          },
+                          {
+                            label: "Date",
+                            value: mr.requestedDate ? formatDate(mr.requestedDate) : "",
+                          },
+                          { label: "Status", value: mr.status },
+                          { label: "Note", value: mr.note || "" },
+                        ],
+                      }}
+                    >
+                      {mr.type}
+                    </TitleCell>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
                     {mr.unitName
                       ? `${mr.unitName}${mr.blockName ? ` · Block ${mr.blockName}` : ""}`

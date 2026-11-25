@@ -4,6 +4,7 @@ import { CheckCircle2, Clock, FileText, LogIn, LogOut, Plus, XCircle } from "luc
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { TitleCell } from "@/components/common/TitleCell";
 import { SearchInput } from "@/components/SearchInput";
 import { StatCard } from "@/components/StatCard";
 import { Badge } from "@/components/ui/badge";
@@ -399,7 +400,9 @@ export function TenantRequestsPanel() {
               visible.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell className="font-medium capitalize">
-                    {row.kind === "application" ? "Application" : row.kind}
+                    <TitleCell className="capitalize" href={row.href || undefined}>
+                      {row.kind === "application" ? "Application" : row.kind}
+                    </TitleCell>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {row.href ? (

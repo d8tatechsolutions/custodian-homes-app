@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { TitleCell } from "@/components/common/TitleCell";
 
 import { DashboardShell } from "@/components/DashboardShell";
 import { SearchInput } from "@/components/SearchInput";
@@ -403,7 +404,26 @@ export function UnitsView({ nav, roleName, canManage = true }: Props) {
                         data-index={virtualRow.index}
                       >
                         <TableCell className="font-medium">
-                          <div>{unit.name}</div>
+                          <TitleCell
+                            detail={{
+                              title: unit.name,
+                              subtitle: propertyById[unit.propertyId]?.title,
+                              fields: [
+                                { label: "Purpose", value: unitPurpose(unit) },
+                                { label: "Block", value: unit.blockName },
+                                {
+                                  label: "Floor",
+                                  value:
+                                    unit.floorLabel ||
+                                    (unit.floorLevel === 0 ? "Ground" : String(unit.floorLevel)),
+                                },
+                                { label: "Rent", value: `KES ${baseRent(unit).toLocaleString()}` },
+                                { label: "Status", value: unit.status },
+                              ],
+                            }}
+                          >
+                            {unit.name}
+                          </TitleCell>
                           <Badge
                             variant="outline"
                             className="mt-1 text-[10px] font-normal capitalize text-muted-foreground"

@@ -3,6 +3,7 @@
 import { CheckCircle2, CreditCard, Download, Loader2, Smartphone, Wallet } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { TitleCell } from "@/components/common/TitleCell";
 import { DashboardShell } from "@/components/DashboardShell";
 import { ReceiptDialog } from "@/components/invoices/ReceiptDialog";
 import { SearchInput } from "@/components/SearchInput";
@@ -293,7 +294,34 @@ const TenantPaymentsPage = () => {
                 {rows.map((invoice) => (
                   <TableRow key={invoice._id}>
                     <TableCell>
-                      <p className="font-medium">{formatPeriod(invoice.period)}</p>
+                      <TitleCell
+                        detail={{
+                          title: formatPeriod(invoice.period),
+                          subtitle: invoice.invoiceNumber,
+                          fields: [
+                            { label: "Invoice", value: invoice.invoiceNumber },
+                            { label: "Status", value: invoiceStatusLabel(invoice.status) },
+                            { label: "Amount due", value: formatKES(invoice.amountDue) },
+                            { label: "Paid", value: formatKES(invoice.amountPaid ?? 0) },
+                            {
+                              label: "Balance",
+                              value: formatKES(
+                                Math.max(0, invoice.amountDue - (invoice.amountPaid ?? 0)),
+                              ),
+                            },
+                            {
+                              label: "Due date",
+                              value: new Date(invoice.dueDate).toLocaleDateString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              }),
+                            },
+                          ],
+                        }}
+                      >
+                        {formatPeriod(invoice.period)}
+                      </TitleCell>
                       <p className="text-xs text-muted-foreground">{invoice.invoiceNumber}</p>
                     </TableCell>
                     <TableCell className="font-medium">

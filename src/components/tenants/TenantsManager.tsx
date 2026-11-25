@@ -3,8 +3,8 @@
 import { CheckCircle2, Clock, Copy, DoorOpen, Loader2, Plus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { CountryCodeSelect } from "@/components/account/CountryCodeSelect";
+import { TitleCell } from "@/components/common/TitleCell";
 import { DashboardShell } from "@/components/DashboardShell";
 import { SearchInput } from "@/components/SearchInput";
 import { StatCard } from "@/components/StatCard";
@@ -398,7 +398,29 @@ export const TenantsManager = ({
                   return (
                     <TableRow key={t._id}>
                       <TableCell className="font-medium">
-                        <div>{t.name}</div>
+                        <TitleCell
+                          detail={{
+                            title: t.name,
+                            subtitle: t.type ?? "residential",
+                            fields: [
+                              { label: "Email", value: t.email ?? "" },
+                              { label: "Phone", value: t.phone ?? "" },
+                              { label: "Property", value: propertyTitle },
+                              {
+                                label: "Unit",
+                                value: t.unit ? `${t.unit.name} · ${t.unit.blockName}` : "",
+                              },
+                              {
+                                label: "Requested unit",
+                                value: t.requestedUnit
+                                  ? `${t.requestedUnit.name} · ${t.requestedUnit.blockName}`
+                                  : "",
+                              },
+                            ],
+                          }}
+                        >
+                          {t.name}
+                        </TitleCell>
                         <div className="mt-0.5">
                           <Badge
                             variant="outline"
