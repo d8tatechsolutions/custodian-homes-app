@@ -1,0 +1,20 @@
+# Files kept in git but never uploaded to Vercel.
+# Only what the app needs to build and run is deployed.
+
+# Documentation, plans and runbooks
+docs/
+*.md
+.opencode/
+
+# Host-only scripts (migrations, backfills); run from a workstation, never on the server
+scripts/
+
+# Tests and tooling
+e2e/
+coverage/
+.github/
+
+# Local container setup
+Dockerfile
+docker-compose.yml
+.dockerignore
