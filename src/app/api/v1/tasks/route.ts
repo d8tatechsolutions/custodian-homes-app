@@ -3,12 +3,21 @@ import { NextResponse } from "next/server";
 import type { DashboardActor } from "@/app/api/v1/_helpers";
 import { propertyTitleMap, readJsonBody, resolveDashboardActor } from "@/app/api/v1/_helpers";
 import { TASK_STATUSES } from "@/lib/domain-enums";
+import { isTasksV2Enabled } from "@/lib/feature-flags";
+import { queueTaskNotice, recordTaskActivity } from "@/lib/maintenance/activity";
+import { resolveAssignee } from "@/lib/maintenance/assignee";
+import { nairobiToday } from "@/lib/maintenance/dates";
+import { ACTIVE_TASK_STATUSES, TASK_STATUSES_V2 } from "@/lib/maintenance/enums";
+import { loadTaskLocation } from "@/lib/maintenance/location-loader";
+import { serializeTaskV2, type TaskDoc } from "@/lib/maintenance/route-helpers";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
 import { requirePermission } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
-import { taskInput } from "@/lib/schemas/task";
+import { taskV2CreateFields } from "@/lib/schemas/maintenance";
+import { type TaskInput, taskInput } from "@/lib/schemas/task";
 import { serializeTask } from "@/lib/tasks";
+import { Complaint } from "@/models/Complaint";
 import { Property } from "@/models/Property";
 import { Task } from "@/models/Task";
 import { User } from "@/models/User";
@@ -72,7 +81,9 @@ export async function GET(request: NextRequest) {
   const propertyId = request.nextUrl.searchParams.get("propertyId");
   const assignedTo = request.nextUrl.searchParams.get("assignedTo");
 
-  if (status && !(TASK_STATUSES as readonly string[]).includes(status)) {
+  const v2 = isTasksV2Enabled();
+  const knownStatuses: readonly string[] = v2 ? TASK_STATUSES_V2 : TASK_STATUSES;
+  if (status && !knownStatuses.includes(status)) {
     return NextResponse.json({ error: "Invalid task status" }, { status: 400 });
   }
 
@@ -110,6 +121,23 @@ export async function GET(request: NextRequest) {
   if (status) clauses.push({ status });
   if (propertyId) clauses.push({ propertyId });
   if (assignedTo) clauses.push({ assignedTo });
+  if (v2) {
+    // v2 list filters; they only ever narrow the scope clauses above.
+    const params = request.nextUrl.searchParams;
+    const category = params.get("category");
+    const complaintId = params.get("complaintId");
+    const assigneeKind = params.get("assigneeKind");
+    if (category) clauses.push({ category });
+    if (complaintId) clauses.push({ complaintIds: complaintId });
+    if (assigneeKind === "vendor" || assigneeKind === "staff") {
+      clauses.push({ "assignee.kind": assigneeKind });
+    }
+    if (params.get("active") === "1") clauses.push({ status: { $in: [...ACTIVE_TASK_STATUSES] } });
+    if (params.get("overdue") === "1") {
+      clauses.push({ status: { $in: [...ACTIVE_TASK_STATUSES] } });
+      clauses.push({ dueDate: { $lt: nairobiToday(), $gt: "" } });
+    }
+  }
   const filter: Record<string, unknown> = clauses.length === 1 ? clauses[0] : { $and: clauses };
 
   const [tasks, total] = await Promise.all([
@@ -120,7 +148,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json(
     buildPaginationResult(
-      tasks.map((t) => serializeTask(t, titles)),
+      tasks.map((t) => (v2 ? serializeTaskV2(t as TaskDoc, titles) : serializeTask(t, titles))),
       total,
       page,
       limit,
@@ -139,6 +167,7 @@ export async function POST(request: NextRequest) {
   if (authError) return authError;
 
   const body = await readJsonBody(request);
+  const v2 = isTasksV2Enabled();
   const parsed = taskInput.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -186,6 +215,14 @@ export async function POST(request: NextRequest) {
 
   const creator = await User.findById(actor.userId).select("name").lean();
 
+  if (v2) {
+    return createTaskV2(body, parsed.data, actor, {
+      propertyId,
+      ownerId,
+      creatorName: (creator as { name?: string } | null)?.name ?? "",
+    });
+  }
+
   const task = await Task.create({
     title: parsed.data.title,
     propertyId,
@@ -203,4 +240,103 @@ export async function POST(request: NextRequest) {
 
   const titles = await propertyTitleMap([task.propertyId]);
   return NextResponse.json({ data: serializeTask(task.toObject(), titles) }, { status: 201 });
+}
+
+/**
+ * Tasks & Maintenance v2 create: validates location, assignee (caretakers are
+ * always assigned to themselves), linked complaints and "before" photos, then
+ * links complaints both ways and records the first history entry.
+ */
+async function createTaskV2(
+  body: unknown,
+  base: TaskInput,
+  actor: DashboardActor,
+  target: { propertyId: string; ownerId: string; creatorName: string },
+): Promise<NextResponse> {
+  const extra = taskV2CreateFields.safeParse(body ?? {});
+  if (!extra.success) {
+    return NextResponse.json(
+      { error: "Invalid task payload", issues: extra.error.flatten() },
+      { status: 400 },
+    );
+  }
+  const { propertyId, ownerId } = target;
+
+  const location = await loadTaskLocation(propertyId, extra.data.location);
+  if ("error" in location) return NextResponse.json({ error: location.error }, { status: 400 });
+
+  const requestedAssignee =
+    actor.role === "caretaker"
+      ? { kind: "staff" as const, userId: actor.userId }
+      : (extra.data.assignee ?? null);
+  const assignee = await resolveAssignee(actor, requestedAssignee, propertyId, ownerId);
+  if ("error" in assignee) return NextResponse.json({ error: assignee.error }, { status: 400 });
+
+  const complaintIds = [...new Set(extra.data.complaintIds)];
+  if (complaintIds.length > 0) {
+    const found = await Complaint.countDocuments({
+      _id: { $in: complaintIds },
+      ownerId,
+      propertyId,
+    });
+    if (found !== complaintIds.length) {
+      return NextResponse.json(
+        { error: "A linked complaint is not on this property" },
+        { status: 400 },
+      );
+    }
+  }
+
+  const uploadedAt = new Date();
+  const task = await Task.create({
+    title: base.title,
+    propertyId,
+    ownerId,
+    priority: base.priority,
+    status: "open",
+    dueDate: base.dueDate,
+    notes: base.notes ?? "",
+    createdBy: actor.userId,
+    createdByRole: actor.role,
+    createdByName: target.creatorName,
+    category: extra.data.category,
+    location,
+    assignee: assignee.assignee,
+    assignedTo: assignee.assignedTo,
+    assignedToName: assignee.assignedToName,
+    scheduledFor: extra.data.scheduledFor ?? "",
+    complaintIds,
+    photosBefore: extra.data.photosBefore.map((m) => ({
+      ...m,
+      kind: "image",
+      uploadedBy: actor.userId,
+      uploadedAt,
+    })),
+  });
+
+  if (complaintIds.length > 0) {
+    await Complaint.updateMany(
+      { _id: { $in: complaintIds } },
+      { $addToSet: { taskIds: String(task._id) } },
+    );
+  }
+  const who = { userId: actor.userId, role: actor.role, name: target.creatorName };
+  await recordTaskActivity(
+    task,
+    who,
+    "created",
+    assignee.assignee
+      ? `Created and assigned to ${assignee.assignedToName || "someone"}`
+      : "Created",
+    { complaintIds },
+  );
+  if (assignee.assignee?.kind === "staff" && assignee.assignedTo !== actor.userId) {
+    await queueTaskNotice(task, who, "Assignee: you have a new task", [assignee.assignedTo]);
+  }
+
+  const titles = await propertyTitleMap([propertyId]);
+  return NextResponse.json(
+    { data: serializeTaskV2(task.toObject() as TaskDoc, titles) },
+    { status: 201 },
+  );
 }

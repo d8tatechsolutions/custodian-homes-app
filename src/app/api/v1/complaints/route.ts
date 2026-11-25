@@ -8,6 +8,8 @@ import {
 } from "@/app/api/v1/_helpers";
 import { serializeComplaint } from "@/lib/complaints";
 import { COMPLAINT_STATUSES } from "@/lib/domain-enums";
+import { isTasksV2Enabled } from "@/lib/feature-flags";
+import { createTaskForComplaint } from "@/lib/maintenance/complaint-task";
 import { connectToDatabase } from "@/lib/mongoose";
 import { notifyComplaintCreated } from "@/lib/notifications";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
@@ -158,6 +160,12 @@ export async function POST(request: NextRequest) {
     priority: parsed.data.priority,
     status: "open",
   });
+
+  // Tasks & Maintenance v2: every complaint raises a task (client decision Q1).
+  // Never blocks the complaint: failures are logged inside the helper.
+  if (isTasksV2Enabled()) {
+    await createTaskForComplaint(complaint.toObject());
+  }
 
   const created = await Complaint.findById(String(complaint._id)).lean();
   if (!created) {

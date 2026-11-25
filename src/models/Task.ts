@@ -56,6 +56,8 @@ export interface ITaskCost {
     decidedBy?: string;
     decidedAt?: Date | null;
     note?: string;
+    /** Status to return to once the approver decides. */
+    resumeStatus?: string;
   };
   labourAmount?: number;
   materialsAmount?: number;
@@ -156,6 +158,7 @@ const costSchema = new Schema<ITaskCost>(
       decidedBy: { type: String, default: "" },
       decidedAt: { type: Date, default: null },
       note: { type: String, trim: true, default: "" },
+      resumeStatus: { type: String, default: "" },
     },
     labourAmount: { type: Number, min: 0, default: 0 },
     materialsAmount: { type: Number, min: 0, default: 0 },
