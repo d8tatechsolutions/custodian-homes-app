@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { SearchInput } from "@/components/SearchInput";
 import { StatCard } from "@/components/StatCard";
+import { TasksPageSwitch } from "@/components/tasks/TasksPageSwitch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -317,4 +318,16 @@ const AdminTasksPage = () => {
   );
 };
 
-export default AdminTasksPage;
+/** New hub when TASKS_V2_ENABLED is on; the page above is unchanged otherwise. */
+const TasksPage = () => (
+  <TasksPageSwitch
+    viewerRole="admin"
+    roleName="Admin"
+    nav={nav}
+    basePath="/dashboard/admin/tasks"
+    invoicesHref="/dashboard/admin/accounting"
+    Legacy={AdminTasksPage}
+  />
+);
+
+export default TasksPage;

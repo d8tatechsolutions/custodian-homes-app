@@ -27,6 +27,8 @@ export interface DashNavItem {
   label: string;
   icon: LucideIcon;
   group?: string;
+  /** Only shown when this release flag is on (filtered by DashboardShell). */
+  releaseFlag?: "tasksV2" | "brokerBids" | "fxDisplay";
 }
 
 export interface NavGroup {
@@ -175,7 +177,17 @@ export const adminNav: DashNavItem[] = [
   },
 ];
 export const caretakerNav = buildDashboardNav("caretaker");
-export const custodianNav = buildDashboardNav("custodian");
+export const custodianNav: DashNavItem[] = [
+  ...buildDashboardNav("custodian"),
+  // Tasks & Maintenance v2 gives custodians a tasks hub; hidden until the flag is on.
+  {
+    to: "/dashboard/custodian/tasks",
+    label: "Tasks & Maintenance",
+    icon: Wrench,
+    group: "operations",
+    releaseFlag: "tasksV2",
+  },
+];
 export const brokerNav = buildDashboardNav("broker");
 
 export const caretakerNavWithTenants: DashNavItem[] = [

@@ -5,14 +5,16 @@ import { ChevronDown, LogOut, Menu } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { findGroupForPath, groupNavItems } from "@/config/dashboardNav";
 import { useNavAccordion } from "@/contexts/NavAccordionContext";
 import { useAuth } from "@/hooks/use-auth";
+import { useReleaseFlags } from "@/hooks/use-fx";
 import { BRAND } from "@/lib/brand";
+import type { ReleaseFlags } from "@/lib/feature-flags";
 import { cn } from "@/lib/utils";
 import { Logo } from "./Logo";
 import { NotificationsBell } from "./NotificationsBell";
@@ -24,6 +26,8 @@ export interface DashNavItem {
   label: string;
   icon: LucideIcon;
   group?: string;
+  /** Only shown when this release flag is on (see `lib/feature-flags.ts`). */
+  releaseFlag?: keyof ReleaseFlags;
 }
 
 interface Props {
@@ -36,7 +40,12 @@ interface Props {
 
 type Surface = "desktop" | "mobile";
 
-export const DashboardShell = ({ roleName, nav, title, subtitle, children }: Props) => {
+export const DashboardShell = ({ roleName, nav: allNav, title, subtitle, children }: Props) => {
+  const { flags } = useReleaseFlags();
+  const nav = useMemo(
+    () => allNav.filter((item) => !item.releaseFlag || flags[item.releaseFlag]),
+    [allNav, flags],
+  );
   const pathname = usePathname();
   const router = useRouter();
   const { signOut } = useAuth();
