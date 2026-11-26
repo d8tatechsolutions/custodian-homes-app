@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import VerifyPage from "./page";
 
@@ -31,6 +32,7 @@ describe("VerifyPage", () => {
   });
 
   it("calls verify-email and displays success state with redirect link", async () => {
+    currentToken = "good-token";
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -54,6 +56,7 @@ describe("VerifyPage", () => {
   });
 
   it("shows error state when verification API fails", async () => {
+    currentToken = "failing-token";
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       json: async () => ({ error: "Invalid or expired verification token" }),
@@ -62,5 +65,30 @@ describe("VerifyPage", () => {
     render(<VerifyPage />);
 
     expect(await screen.findByText("Invalid or expired verification token")).toBeInTheDocument();
+  });
+
+  it("sends one request when the page runs twice, so a used link never shows as failed", async () => {
+    currentToken = "once-token";
+    // The second call would fail like the real server (token already used).
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ redirectTo: "/dashboard/tenant" }),
+      } as Response)
+      .mockResolvedValue({
+        ok: false,
+        json: async () => ({ error: "Invalid or expired verification token" }),
+      } as Response);
+
+    render(
+      <StrictMode>
+        <VerifyPage />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText("Email verified")).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Invalid or expired verification token")).toBeNull();
   });
 });

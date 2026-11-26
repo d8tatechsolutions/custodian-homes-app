@@ -477,3 +477,99 @@ describe("POST /api/auth — rate limiting", () => {
     expect(signin.status).toBe(401);
   });
 });
+
+describe("POST /api/auth — new users who have not confirmed their email", () => {
+  beforeEach(() => {
+    resetModelStubs();
+    resetAuthRateLimits();
+  });
+
+  const signup = (overrides: Record<string, unknown> = {}) =>
+    POST(
+      buildRequest("/api/auth", {
+        method: "POST",
+        body: {
+          action: "signup",
+          name: "New Name",
+          email: "new@keja.co",
+          password: "secret123",
+          role: "tenant",
+          phone: "+254712345678",
+          nationalId: "12345678",
+          ...overrides,
+        },
+      }),
+    );
+
+  async function unverifiedUser() {
+    return {
+      _id: USER_ID,
+      email: "new@keja.co",
+      phone: "+254712345678",
+      role: "tenant",
+      isActive: true,
+      isVerified: false,
+      passwordHash: await bcrypt.hash("secret123", 12),
+    };
+  }
+
+  it("sign-in with the right password says so and returns the email for a new link", async () => {
+    user.findOne.mockReturnValue(buildQuery(await unverifiedUser()));
+    const res = await POST(
+      buildRequest("/api/auth", {
+        method: "POST",
+        body: { action: "signin", identifier: "+254712345678", password: "secret123" },
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(await json(res)).toMatchObject({ code: "EMAIL_NOT_VERIFIED", email: "new@keja.co" });
+  });
+
+  it("sign-in with a wrong password reveals nothing about the account", async () => {
+    user.findOne.mockReturnValue(buildQuery(await unverifiedUser()));
+    const res = await POST(
+      buildRequest("/api/auth", {
+        method: "POST",
+        body: { action: "signin", identifier: "+254712345678", password: "wrong-pass" },
+      }),
+    );
+    expect(res.status).toBe(401);
+    const body = await json(res);
+    expect(body.code).toBeUndefined();
+    expect(body.email).toBeUndefined();
+  });
+
+  it("signing up again points them to a new verification link instead of a dead end", async () => {
+    user.findOne.mockResolvedValue(await unverifiedUser());
+    const res = await signup();
+    expect(res.status).toBe(409);
+    expect((await json(res)).code).toBe("EMAIL_NOT_VERIFIED");
+    expect(user.create).not.toHaveBeenCalled();
+  });
+
+  it("a fully registered email still gets the plain 409", async () => {
+    user.findOne.mockResolvedValue({ ...(await unverifiedUser()), isVerified: true });
+    const res = await signup();
+    expect(res.status).toBe(409);
+    expect((await json(res)).code).toBeUndefined();
+  });
+
+  it("a mobile number already in use gets a clear 409, not a server error", async () => {
+    user.findOne.mockResolvedValue(null);
+    user.create.mockRejectedValue(
+      Object.assign(new Error("E11000 duplicate key"), {
+        code: 11000,
+        keyPattern: { phone: 1 },
+      }),
+    );
+    const res = await signup();
+    expect(res.status).toBe(409);
+    expect((await json(res)).error).toBe("This mobile number is already used by another account");
+  });
+
+  it("says which field is wrong", async () => {
+    const res = await signup({ nationalId: "12/34" });
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toBe("Enter a valid national ID number");
+  });
+});

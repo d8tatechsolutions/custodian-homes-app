@@ -61,6 +61,29 @@ const AUTH_RATE_LIMITS: Record<string, { windowMs: number; limit: number }> = {
 };
 const DEFAULT_AUTH_RATE_LIMIT = { windowMs: 15 * 60_000, limit: 20 };
 
+/** The first problem in plain words, so the form can say what to fix. */
+function invalidInput(error: z.ZodError) {
+  return NextResponse.json(
+    { error: error.issues[0]?.message ?? "Invalid input", issues: error.flatten() },
+    { status: 400 },
+  );
+}
+
+/** Sent when an account exists but its email was never confirmed. */
+const NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
+
+function isDuplicatePhone(error: unknown): boolean {
+  const e = error as { code?: number; keyPattern?: Record<string, unknown> } | null;
+  return e?.code === 11000 && Boolean(e.keyPattern && "phone" in e.keyPattern);
+}
+
+function duplicatePhoneResponse() {
+  return NextResponse.json(
+    { error: "This mobile number is already used by another account" },
+    { status: 409 },
+  );
+}
+
 async function generateVerificationToken(): Promise<string> {
   return crypto.randomUUID();
 }
@@ -113,12 +136,7 @@ export async function POST(request: Request) {
 
     if (action === "signin") {
       const parsed = signInSchema.safeParse(body);
-      if (!parsed.success) {
-        return NextResponse.json(
-          { error: "Invalid input", issues: parsed.error.flatten() },
-          { status: 400 },
-        );
-      }
+      if (!parsed.success) return invalidInput(parsed.error);
 
       await connectToDatabase();
       const rawId = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
@@ -144,13 +162,17 @@ export async function POST(request: Request) {
       if (!user || !user.isActive) {
         return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
       }
-      if (!user.isVerified) {
-        return NextResponse.json({ error: "Please verify your email first" }, { status: 403 });
-      }
-
       const isValid = await bcrypt.compare(parsed.data.password, user.passwordHash);
       if (!isValid) {
         return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+      }
+      // Checked after the password so a stranger can't learn the account is
+      // unconfirmed; the owner gets their email back to request a new link.
+      if (!user.isVerified) {
+        return NextResponse.json(
+          { error: "Please verify your email first", code: NOT_VERIFIED, email: user.email },
+          { status: 403 },
+        );
       }
 
       // Bind tenant signups to any unbound Tenant rows carrying the same
@@ -183,12 +205,7 @@ export async function POST(request: Request) {
 
     if (action === "signup") {
       const parsed = signUpWithVerificationSchema.safeParse(body);
-      if (!parsed.success) {
-        return NextResponse.json(
-          { error: "Invalid input", issues: parsed.error.flatten() },
-          { status: 400 },
-        );
-      }
+      if (!parsed.success) return invalidInput(parsed.error);
 
       await connectToDatabase();
       const email = parsed.data.email.trim().toLowerCase();
@@ -217,7 +234,12 @@ export async function POST(request: Request) {
           existing.nationalId = encryptField(normalizeNationalId(parsed.data.nationalId));
           existing.verificationToken = verificationToken;
           existing.verificationTokenExpiry = verificationTokenExpiry;
-          await existing.save();
+          try {
+            await existing.save();
+          } catch (error) {
+            if (isDuplicatePhone(error)) return duplicatePhoneResponse();
+            throw error;
+          }
 
           const appBaseUrl = getAppUrl();
           const verifyUrl = `${appBaseUrl}/auth/verify?token=${verificationToken}`;
@@ -243,6 +265,16 @@ export async function POST(request: Request) {
               "Account created successfully! Please check your inbox (and spam folder) for the verification email to activate your account.",
           });
         }
+        if (existing.isActive && !existing.isVerified) {
+          return NextResponse.json(
+            {
+              error:
+                "This email is already registered but not confirmed yet. Send a new verification link to finish.",
+              code: NOT_VERIFIED,
+            },
+            { status: 409 },
+          );
+        }
         return NextResponse.json({ error: "Email already registered" }, { status: 409 });
       }
 
@@ -250,19 +282,25 @@ export async function POST(request: Request) {
       const verificationToken = await generateVerificationToken();
       const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-      const createdUser = await withUserCodeRetry((userCode) =>
-        User.create({
-          email,
-          name: parsed.data.name,
-          passwordHash,
-          role: parsed.data.role,
-          phone: parsed.data.phone,
-          nationalId: encryptField(normalizeNationalId(parsed.data.nationalId)),
-          verificationToken,
-          verificationTokenExpiry,
-          userCode,
-        }),
-      );
+      let createdUser: { _id: unknown };
+      try {
+        createdUser = await withUserCodeRetry((userCode) =>
+          User.create({
+            email,
+            name: parsed.data.name,
+            passwordHash,
+            role: parsed.data.role,
+            phone: parsed.data.phone,
+            nationalId: encryptField(normalizeNationalId(parsed.data.nationalId)),
+            verificationToken,
+            verificationTokenExpiry,
+            userCode,
+          }),
+        );
+      } catch (error) {
+        if (isDuplicatePhone(error)) return duplicatePhoneResponse();
+        throw error;
+      }
 
       const appBaseUrl = getAppUrl();
       const verifyUrl = `${appBaseUrl}/auth/verify?token=${verificationToken}`;
