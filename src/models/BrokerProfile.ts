@@ -34,6 +34,23 @@ const brokerProfileSchema = new Schema(
     suspendedByUserId: { type: String, default: "" },
     suspendedAt: { type: Date, default: null },
     suspensionReason: { type: String, default: "" },
+    // ── Broker bids release (all optional; existing profiles stay valid) ──
+    /** National ID, encrypted at rest with `encryptField`. */
+    nationalId: { type: String, default: "" },
+    /** How the broker joined: self sign-up, or added by an admin / the platform. */
+    addedVia: { type: String, enum: ["self", "admin", "system"], default: "self" },
+    addedByUserId: { type: String, default: "" },
+    /** Default terms pre-filled into the broker's bids (client decision O4). */
+    defaultCommission: {
+      basis: {
+        type: String,
+        enum: ["first_month_rent", "percentage_of_rent", "fixed", ""],
+        default: "",
+      },
+      rateBps: { type: Number, min: 0, max: 10000, default: 0 },
+      fixedAmountMinor: { type: Number, min: 0, default: 0 },
+      currency: { type: String, enum: ["KES", "USD"], default: "KES" },
+    },
   },
   { timestamps: true },
 );
