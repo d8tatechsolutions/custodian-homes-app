@@ -1,11 +1,16 @@
 import jwt from "jsonwebtoken";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { botVerdict } from "@/lib/bot-guard";
 import { getJwtSecret } from "@/lib/jwt";
 import { getDashboardAllowedRoles, getRoleRoute, type Role } from "@/lib/role-routes";
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/api/:path*"],
+  // Pages and API, excluding static assets, images, robots.txt and the
+  // sitemap (crawlers must always be able to read robots.txt).
+  matcher: [
+    "/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpe?g|gif|webp|avif|svg|ico|css|js|txt|xml|woff2?)$).*)",
+  ],
 };
 
 function getRoleFromToken(token: string): Role | null {
@@ -19,6 +24,16 @@ function getRoleFromToken(token: string): Role | null {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Bot / scraper blocking (see lib/bot-guard.ts for what is and isn't blocked).
+  const verdict = botVerdict(pathname, request.headers.get("user-agent"));
+  if (verdict) {
+    return new NextResponse("Forbidden", {
+      status: 403,
+      headers: { "Content-Type": "text/plain", "X-Robots-Tag": "noindex, nofollow" },
+    });
+  }
+
   const token = request.cookies.get("keja-token")?.value;
 
   if (pathname.startsWith("/dashboard")) {

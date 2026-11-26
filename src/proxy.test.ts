@@ -80,7 +80,30 @@ describe("proxy middleware", () => {
 
   it("passes through non-dashboard requests", async () => {
     const req = buildDashboardRequest("/api/v1/properties");
+    // API calls must carry a user agent (bot guard); use a normal browser one.
+    req.headers.set("user-agent", "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0");
     const res = await proxy(req);
     expect(res.status).toBe(200);
+  });
+
+  it("refuses AI crawlers, attack tools and UA-less API calls", async () => {
+    const ai = new NextRequest("http://localhost:3000/marketplace", {
+      headers: { "user-agent": "GPTBot/1.2" },
+    });
+    expect((await proxy(ai)).status).toBe(403);
+    const tool = new NextRequest("http://localhost:3000/api/v1/marketplace/listings", {
+      headers: { "user-agent": "sqlmap/1.7" },
+    });
+    expect((await proxy(tool)).status).toBe(403);
+    expect((await proxy(new NextRequest("http://localhost:3000/api/v1/tasks"))).status).toBe(403);
+  });
+
+  it("never blocks payment callbacks or the scheduled job", async () => {
+    const cb = new NextRequest("http://localhost:3000/api/v1/payments/paystack/webhook");
+    expect((await proxy(cb)).status).toBe(200);
+    const cron = new NextRequest("http://localhost:3000/api/v1/cron/daily", {
+      headers: { "user-agent": "vercel-cron/1.0" },
+    });
+    expect((await proxy(cron)).status).toBe(200);
   });
 });

@@ -112,6 +112,11 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // Private areas are never indexed, even if a link to them leaks.
+      ...["/dashboard/:path*", "/api/:path*", "/auth/:path*", "/auth"].map((source) => ({
+        source,
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }],
+      })),
     ];
   },
 };

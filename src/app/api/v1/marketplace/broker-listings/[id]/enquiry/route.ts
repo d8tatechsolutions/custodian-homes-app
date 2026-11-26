@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { type BrokerListingDoc, isLive } from "@/lib/broker-listings";
+import { durableRateLimit } from "@/lib/durable-rate-limit";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
 import { isValidE164 } from "@/lib/phone";
@@ -33,6 +34,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (limit instanceof NextResponse) return limit;
   const originError = checkSameOrigin(request);
   if (originError) return originError;
+  const durable = await durableRateLimit(request, {
+    key: "broker-enquiry",
+    windowMs: 60 * 60_000,
+    limit: 10,
+  });
+  if (durable) return durable;
 
   const { id } = await context.params;
   if (!isValidObjectId(id)) return NextResponse.json({ error: "Not found" }, { status: 404 });

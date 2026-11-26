@@ -9,7 +9,7 @@ import { getJwtSecret } from "@/lib/jwt";
 import { connectToDatabase } from "@/lib/mongoose";
 import { isValidE164, isValidNationalId, normalizeNationalId } from "@/lib/phone";
 import { isProfileComplete } from "@/lib/profile-completion";
-import { rateLimitAuth } from "@/lib/rate-limit-auth";
+import { rateLimitAccount, rateLimitAuth } from "@/lib/rate-limit-auth";
 import { type Role, roleRoute } from "@/lib/role-routes";
 import { withUserCodeRetry } from "@/lib/user-code";
 import { normalizeContactEmail, normalizeContactPhone } from "@/lib/user-identity";
@@ -122,6 +122,8 @@ export async function POST(request: Request) {
 
       await connectToDatabase();
       const rawId = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
+      const accountLimited = await rateLimitAccount(rawId, "signin");
+      if (accountLimited) return accountLimited;
       let user = null;
       if (rawId.includes("@")) {
         // Emails are stored lowercased, so normalise before lookup.
@@ -347,6 +349,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Email required" }, { status: 400 });
       }
       const normalizedEmail = String(email).trim().toLowerCase();
+
+      const accountLimited = await rateLimitAccount(normalizedEmail, "forgot-password");
+      if (accountLimited) return accountLimited;
 
       await connectToDatabase();
       const user = await User.findOne({ email: normalizedEmail });
