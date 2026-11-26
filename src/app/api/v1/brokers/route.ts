@@ -30,9 +30,15 @@ export async function GET(request: NextRequest) {
     query.status = statusParam;
   }
 
+  // Owners see the broker directory, never payout accounts or identity data;
+  // those stay with the platform (system-admin) for payouts and checks.
+  const hidden =
+    user.role === "system-admin"
+      ? "-nationalId"
+      : "-nationalId -payoutMethod -verificationNotes -suspensionReason -defaultCommission";
   const [total, profiles] = await Promise.all([
     BrokerProfile.countDocuments(query),
-    BrokerProfile.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    BrokerProfile.find(query).select(hidden).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
   ]);
 
   return NextResponse.json({

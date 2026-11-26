@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
   const publicListing = async () => {
     const available = await Promise.all([
       Property.find({ status: "available", published: true })
-        .select("-ownerId -createdById -__v")
+        .select("-ownerId -createdById -caretakerIds -__v")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)

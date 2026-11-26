@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-
+import { durableRateLimit } from "@/lib/durable-rate-limit";
 import { sendContactMessage } from "@/lib/email";
 import { connectToDatabase } from "@/lib/mongoose";
 import { authenticate } from "@/lib/permissions";
@@ -28,8 +28,15 @@ export async function POST(request: NextRequest) {
   const originError = checkSameOrigin(request);
   if (originError) return originError;
 
-  const limited = await rateLimit(request, { windowMs: 60_000, limit: 5, key: "contact" });
+  // Per visitor (it was one shared bucket for everyone), and durable across instances.
+  const limited = await rateLimit(request, { windowMs: 60_000, limit: 5 });
   if (limited instanceof NextResponse) return limited;
+  const durable = await durableRateLimit(request, {
+    key: "contact",
+    windowMs: 60 * 60_000,
+    limit: 10,
+  });
+  if (durable) return durable;
 
   let body: unknown;
   try {

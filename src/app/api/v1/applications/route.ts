@@ -5,6 +5,7 @@ import { getAssignedPropertyIds, getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
 import { authenticate, getAdminAssignmentScope } from "@/lib/permissions";
+import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { applicationCreateInput } from "@/lib/schemas/application";
 import { Application } from "@/models/Application";
 import { Property } from "@/models/Property";
@@ -93,8 +94,17 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const originError = checkSameOrigin(request);
+  if (originError) return originError;
   const auth = authenticate(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Per account: far more than a person needs, low enough to stop scripted spam.
+  const limited = await rateLimit(request, {
+    windowMs: 60_000,
+    limit: 20,
+    key: `apply:${auth.userId}`,
+  });
+  if (limited instanceof NextResponse) return limited;
 
   const body = await request.json();
   const parsed = applicationCreateInput.safeParse(body);

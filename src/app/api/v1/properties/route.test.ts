@@ -159,7 +159,7 @@ describe("GET /api/v1/properties", () => {
 
     expect(property.find).toHaveBeenCalledWith({ status: "available", published: true });
     expect(property.countDocuments).toHaveBeenCalledWith({ status: "available", published: true });
-    expect(chain.select).toHaveBeenCalledWith("-ownerId -createdById -__v");
+    expect(chain.select).toHaveBeenCalledWith("-ownerId -createdById -caretakerIds -__v");
     expect(chain.sort).toHaveBeenCalledWith({ createdAt: -1 });
     expect(chain.skip).toHaveBeenCalledWith(0);
     expect(chain.limit).toHaveBeenCalledWith(10);
