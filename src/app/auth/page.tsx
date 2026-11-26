@@ -141,7 +141,7 @@ const AuthForm = () => {
             ? `Sign in to continue to ${BRAND.name}.`
             : isInvited
               ? "You've been invited — finish setting up your account."
-              : "Join as a tenant, caretaker, or admin."
+              : "Join as a tenant, caretaker, or owner."
       }
     >
       {pendingEmail ? (
@@ -318,7 +318,7 @@ const AuthForm = () => {
                   <SelectContent>
                     <SelectItem value="tenant">Tenant</SelectItem>
                     <SelectItem value="caretaker">Caretaker</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="admin">Owner</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

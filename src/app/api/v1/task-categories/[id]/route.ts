@@ -13,7 +13,7 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   const actor = await catalogActor(request);
   if (actor instanceof NextResponse) return actor;
   if (actor.role !== "admin") {
-    return NextResponse.json({ error: "Only an admin can remove categories" }, { status: 403 });
+    return NextResponse.json({ error: "Only the owner can remove categories" }, { status: 403 });
   }
   if (!isValidObjectId(id))
     return NextResponse.json({ error: "Invalid category id" }, { status: 400 });

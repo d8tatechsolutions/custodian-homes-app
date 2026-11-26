@@ -43,9 +43,9 @@ export async function resolveAssignee(
     const vendor = (await Vendor.findOne({ _id: input.vendorId, ownerId, isActive: true })
       .select("name propertyIds")
       .lean()) as { _id: unknown; name: string; propertyIds?: string[] } | null;
-    if (!vendor) return { error: "That vendor is not available" };
+    if (!vendor) return { error: "That service provider is not available" };
     if (!(vendor.propertyIds ?? []).includes(propertyId)) {
-      return { error: "That vendor does not serve this property" };
+      return { error: "That service provider does not serve this property" };
     }
     return {
       assignee: { kind: "vendor", vendorId: String(vendor._id), userId: "", name: vendor.name },

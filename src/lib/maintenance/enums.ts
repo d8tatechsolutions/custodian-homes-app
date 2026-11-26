@@ -19,7 +19,7 @@ export const TASK_STATUS_LABELS: Record<TaskStatusV2, string> = {
   "in-progress": "In progress",
   "waiting-approval": "Waiting for approval",
   "waiting-parts": "Waiting for parts",
-  "waiting-vendor": "Waiting for vendor",
+  "waiting-vendor": "Waiting for service provider",
   done: "Done",
   cancelled: "Cancelled",
 };

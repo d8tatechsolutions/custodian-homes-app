@@ -6,7 +6,7 @@ import { adminNav } from "@/config/dashboardNav";
 
 const AdminNotificationsPage = () => (
   <DashboardShell
-    roleName="Admin"
+    roleName="Owner"
     nav={adminNav}
     title="Notifications"
     subtitle="Your in-app notifications — payments, leases, complaints, and more."

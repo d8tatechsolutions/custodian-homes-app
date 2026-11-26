@@ -200,12 +200,12 @@ describe("TasksHub", () => {
   it("shows admin-only tabs to admins and hides them from caretakers", async () => {
     mockApi({ "/api/v1/tasks": [], "/api/v1/task-categories": [] });
     const { unmount } = render(<TasksHub viewerRole="admin" basePath="/dashboard/admin/tasks" />);
-    for (const name of ["Tasks", "Complaints", "Approvals", "Recurring", "Vendors", "Settings"]) {
+    for (const name of ["Tasks", "Complaints", "Approvals", "Recurring", "Service providers", "Settings"]) {
       expect(screen.getByRole("tab", { name: new RegExp(`^${name}`) })).toBeInTheDocument();
     }
     unmount();
     render(<TasksHub viewerRole="caretaker" basePath="/dashboard/caretaker/tasks" />);
-    expect(screen.queryByRole("tab", { name: /Vendors/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /Service providers/ })).toBeNull();
     expect(screen.queryByRole("tab", { name: /Recurring/ })).toBeNull();
     expect(screen.queryByRole("tab", { name: /Approvals/ })).toBeNull();
   });

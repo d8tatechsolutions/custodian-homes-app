@@ -337,7 +337,7 @@ export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
                   {profile?.status !== "verified"
                     ? "Your broker profile must be verified by an administrator to distribute listings."
                     : authorizations.length === 0
-                      ? "No property or unit authorizations assigned yet. Contact property admins for access."
+                      ? "No property or unit authorizations assigned yet. Contact the property owner for access."
                       : "No active listings found under your current authorizations."}
                 </div>
               ) : (

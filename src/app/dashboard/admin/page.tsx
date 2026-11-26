@@ -52,7 +52,7 @@ const AdminDashboard = () => {
 
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={nav}
       title="Portfolio overview"
       subtitle="Your buildings, people, and performance at a glance."

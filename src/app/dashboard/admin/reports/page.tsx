@@ -70,7 +70,7 @@ const AdminReportsPage = () => {
 
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={nav}
       title="Reports & Analytics"
       subtitle="Financial performance, occupancy metrics, and operational summaries."

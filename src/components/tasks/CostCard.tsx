@@ -140,7 +140,7 @@ export function CostCard({
     },
     {
       key: "paid",
-      label: vendorJob ? "Vendor paid" : "Costs in",
+      label: vendorJob ? "Provider paid" : "Costs in",
       done: vendorJob ? vendorPaid : actual > 0,
       current: task.status === "done" && (vendorJob ? !vendorPaid : actual === 0),
     },
@@ -409,7 +409,7 @@ export function CostCard({
         {vendorJob ? (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold">Vendor payment</h4>
+              <h4 className="text-sm font-semibold">Service provider payment</h4>
               <StatusBadge tone={vendorPaid ? "success" : "warning"}>
                 {vendorPaid ? "Paid" : "Not paid"}
               </StatusBadge>
@@ -468,7 +468,7 @@ export function CostCard({
                           taskActions.cost(task._id, {
                             vendorPayment: { status: "paid", method: payMethod, reference: payRef },
                           }),
-                        "Vendor marked paid",
+                        "Service provider marked paid",
                       )
                     }
                   >

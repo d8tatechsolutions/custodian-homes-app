@@ -169,7 +169,7 @@ export function LocationPicker({
                 placeholder={
                   commonAreas.length
                     ? "Choose an area"
-                    : "None yet — an admin adds them in Settings"
+                    : "None yet — the owner adds them in Settings"
                 }
               />
             </SelectTrigger>

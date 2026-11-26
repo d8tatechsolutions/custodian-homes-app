@@ -74,7 +74,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
   const { actor, ownerId } = loaded;
   if (!(actor.role === "admin" && ownerId === actor.userId)) {
     return NextResponse.json(
-      { error: "Only the property's admin can change these settings" },
+      { error: "Only the property's owner can change these settings" },
       { status: 403 },
     );
   }

@@ -323,7 +323,7 @@ const CaretakerTasksPage = () => {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                placeholder="Any instructions or vendor details…"
+                placeholder="Any instructions or service provider details…"
               />
             </div>
           </div>

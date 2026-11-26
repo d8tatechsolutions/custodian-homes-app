@@ -190,7 +190,7 @@ export default function AdminBrokersPage() {
 
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={nav}
       title="Broker Management"
       subtitle="Verify broker profiles, grant property/unit distribution authorizations, and establish commission agreements."

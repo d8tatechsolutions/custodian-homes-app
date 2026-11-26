@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from "@/hooks/use-auth";
 import { type UserRow, useUserActivation, useUserRolePromotion, useUsers } from "@/hooks/use-users";
+import { roleLabel } from "@/lib/role-labels";
 import { matchesQuery } from "@/lib/search";
 
 const FILTER_ROLES: UserRow["role"][] = [
@@ -101,7 +102,7 @@ export const UserRoleManager = ({ refreshKey = 0 }: { refreshKey?: number }) => 
     const target = confirmTarget;
     try {
       await promoteUserRole(target.user.id, target.role);
-      toast.success(`${target.user.name}'s role updated to ${target.role}`);
+      toast.success(`${target.user.name}'s role updated to ${roleLabel(target.role)}`);
       setConfirmTarget(null);
       refetch();
     } catch (err) {
@@ -160,7 +161,7 @@ export const UserRoleManager = ({ refreshKey = 0 }: { refreshKey?: number }) => 
               <SelectItem value="all">All roles</SelectItem>
               {FILTER_ROLES.map((r) => (
                 <SelectItem key={r} value={r}>
-                  {r}
+                  {roleLabel(r)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -240,7 +241,7 @@ export const UserRoleManager = ({ refreshKey = 0 }: { refreshKey?: number }) => 
                       <TableCell className="text-muted-foreground">{u.email ?? "—"}</TableCell>
                       <TableCell className="font-mono text-xs">{u.userCode || "—"}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{u.role}</Badge>
+                        <Badge variant="secondary">{roleLabel(u.role)}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant={u.isActive ? "default" : "outline"}>
@@ -264,7 +265,7 @@ export const UserRoleManager = ({ refreshKey = 0 }: { refreshKey?: number }) => 
                             <SelectContent>
                               {ASSIGNABLE_ROLES.map((r) => (
                                 <SelectItem key={r} value={r}>
-                                  {r}
+                                  {roleLabel(r)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -339,7 +340,7 @@ export const UserRoleManager = ({ refreshKey = 0 }: { refreshKey?: number }) => 
             <AlertDialogTitle>Change user role?</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmTarget
-                ? `Change ${confirmTarget.user.name} from ${confirmTarget.user.role} to ${confirmTarget.role}?`
+                ? `Change ${confirmTarget.user.name} from ${roleLabel(confirmTarget.user.role)} to ${roleLabel(confirmTarget.role)}?`
                 : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>

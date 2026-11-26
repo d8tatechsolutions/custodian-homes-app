@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
   if (actor instanceof NextResponse) return actor;
   if (!canManageSchedules(actor)) {
     return NextResponse.json(
-      { error: "Only owners, admins and custodians can set up recurring tasks" },
+      { error: "Only owners and custodians can set up recurring tasks" },
       { status: 403 },
     );
   }

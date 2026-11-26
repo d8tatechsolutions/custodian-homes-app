@@ -37,7 +37,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (invoiceAuth) return invoiceAuth;
   if (!(actor.role === "admin" || actor.role === "custodian" || actor.role === "system-admin")) {
     return NextResponse.json(
-      { error: "Only an admin or custodian can bill a tenant" },
+      { error: "Only the owner or custodian can bill a tenant" },
       { status: 403 },
     );
   }

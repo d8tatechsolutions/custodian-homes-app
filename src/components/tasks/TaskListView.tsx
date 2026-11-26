@@ -164,7 +164,7 @@ export function TaskListView({
           <span>
             {t.assignedToName}
             {t.assignee?.kind === "vendor" ? (
-              <span className="text-xs text-muted-foreground"> · vendor</span>
+              <span className="text-xs text-muted-foreground"> · service provider</span>
             ) : null}
           </span>
         ) : (

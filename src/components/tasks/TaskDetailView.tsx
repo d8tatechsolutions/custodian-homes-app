@@ -63,6 +63,7 @@ import {
   type TaskStatusV2,
 } from "@/lib/maintenance/enums";
 import { allowedNextStatuses } from "@/lib/maintenance/status";
+import { roleLabel } from "@/lib/role-labels";
 import type { MaintenanceTask } from "@/types/maintenance";
 
 interface TaskDetailViewProps {
@@ -73,14 +74,6 @@ interface TaskDetailViewProps {
   invoicesHref?: string;
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  admin: "Admin",
-  custodian: "Custodian",
-  caretaker: "Caretaker",
-  "system-admin": "Platform",
-  tenant: "Tenant",
-  system: "System",
-};
 
 function formatStamp(iso: string) {
   const d = new Date(iso);
@@ -529,7 +522,7 @@ export function TaskDetailView({
                 <div className="flex justify-between gap-2">
                   <dt className="text-muted-foreground">Created by</dt>
                   <dd className="text-right">
-                    {task.createdByName || ROLE_LABEL[task.createdByRole] || "—"}
+                    {task.createdByName || roleLabel(task.createdByRole) || "—"}
                   </dd>
                 </div>
               </dl>
@@ -556,9 +549,9 @@ export function TaskDetailView({
                     id: a._id,
                     title:
                       a.kind === "comment"
-                        ? `${a.actorName || ROLE_LABEL[a.actorRole] || "Someone"} commented`
+                        ? `${a.actorName || roleLabel(a.actorRole) || "Someone"} commented`
                         : a.message,
-                    meta: `${a.kind === "comment" ? "" : `${a.actorName || ROLE_LABEL[a.actorRole] || ""} · `}${formatStamp(a.createdAt)}`,
+                    meta: `${a.kind === "comment" ? "" : `${a.actorName || roleLabel(a.actorRole) || ""} · `}${formatStamp(a.createdAt)}`,
                     body:
                       a.kind === "comment" ? (
                         <p className="whitespace-pre-wrap">{a.message}</p>

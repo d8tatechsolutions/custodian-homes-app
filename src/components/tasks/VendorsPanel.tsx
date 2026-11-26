@@ -125,11 +125,11 @@ function VendorDialog({
       if (vendor)
         await apiRequest(`/api/v1/vendors/${vendor._id}`, { method: "PATCH", json: body });
       else await apiRequest("/api/v1/vendors", { method: "POST", json: body });
-      toast.success(vendor ? "Vendor updated" : "Vendor added");
+      toast.success(vendor ? "Service provider updated" : "Service provider added");
       onSaved();
       onOpenChange(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not save the vendor");
+      toast.error(e instanceof Error ? e.message : "Could not save the service provider");
     } finally {
       setSaving(false);
     }
@@ -139,9 +139,9 @@ function VendorDialog({
     <Dialog open={open} onOpenChange={(next) => !saving && onOpenChange(next)}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{vendor ? "Edit vendor" : "Add vendor"}</DialogTitle>
+          <DialogTitle>{vendor ? "Edit service provider" : "Add service provider"}</DialogTitle>
           <DialogDescription>
-            Vendors don't log in. They are told about a job by email once its cost is approved.
+            Service providers don't log in. They are told about a job by email once its cost is approved.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -225,7 +225,7 @@ function VendorDialog({
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Only properties ticked here can assign this vendor.
+              Only properties ticked here can assign this service provider.
             </p>
           </fieldset>
           <div className="space-y-1.5">
@@ -268,7 +268,7 @@ function VendorDialog({
   );
 }
 
-/** The admin's vendor list. */
+/** The owner's list of service providers (vendors). */
 export function VendorsPanel() {
   const { vendors, loading, error, refetch } = useVendors();
   const { properties } = useProperties();
@@ -280,7 +280,7 @@ export function VendorsPanel() {
   const columns: DataColumn<VendorRecord>[] = [
     {
       key: "name",
-      header: "Vendor",
+      header: "Service provider",
       sortValue: (v) => v.name.toLowerCase(),
       cell: (v) => (
         <TitleCell
@@ -354,7 +354,7 @@ export function VendorsPanel() {
             setFormOpen(true);
           }}
         >
-          <Plus className="mr-1.5 h-4 w-4" /> Add vendor
+          <Plus className="mr-1.5 h-4 w-4" /> Add service provider
         </Button>
       </div>
       <DataTable
@@ -363,8 +363,8 @@ export function VendorsPanel() {
         getRowId={(v) => v._id}
         loading={loading}
         error={error}
-        caption="Vendors"
-        emptyTitle="No vendors yet"
+        caption="Service providers"
+        emptyTitle="No service providers yet"
         emptyDescription="Add the plumbers, electricians and other fundis you work with, and pick which properties they serve."
         rowActions={(v) => (
           <>
@@ -397,8 +397,8 @@ export function VendorsPanel() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {deleting?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Past tasks keep their history. A vendor with open tasks can't be removed — reassign
-              them first, or mark the vendor inactive instead.
+              Past tasks keep their history. A service provider with open tasks can't be removed — reassign
+              them first, or mark them inactive instead.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -409,10 +409,10 @@ export function VendorsPanel() {
                 if (!deleting) return;
                 try {
                   await apiRequest(`/api/v1/vendors/${deleting._id}`, { method: "DELETE" });
-                  toast.success("Vendor removed");
+                  toast.success("Service provider removed");
                   refetch();
                 } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "Could not remove the vendor");
+                  toast.error(e instanceof Error ? e.message : "Could not remove the service provider");
                 } finally {
                   setDeleting(null);
                 }

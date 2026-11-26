@@ -36,7 +36,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
   if ((payer !== undefined || vendorPayment !== undefined) && !supervisor) {
     return NextResponse.json(
-      { error: "Only an admin or custodian can set who pays or record vendor payments" },
+      { error: "Only the owner or custodian can set who pays or record service provider payments" },
       { status: 403 },
     );
   }

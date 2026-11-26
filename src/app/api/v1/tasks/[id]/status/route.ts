@@ -57,7 +57,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   }
   if (from === "cancelled" && !canReopenCancelled(actor)) {
     return NextResponse.json(
-      { error: "Only an admin can reopen a cancelled task" },
+      { error: "Only the owner can reopen a cancelled task" },
       { status: 403 },
     );
   }

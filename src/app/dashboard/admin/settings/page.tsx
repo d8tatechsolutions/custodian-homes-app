@@ -64,7 +64,7 @@ const AdminSettingsPage = () => {
 
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={nav}
       title="Settings"
       subtitle="Manage your account and portfolio preferences."

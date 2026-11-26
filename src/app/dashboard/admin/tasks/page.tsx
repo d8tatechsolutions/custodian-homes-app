@@ -126,7 +126,7 @@ const AdminTasksPage = () => {
 
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={nav}
       title="Tasks & Maintenance"
       subtitle="Assign repairs, follow up with caretakers, and resolve issues fast."
@@ -295,7 +295,7 @@ const AdminTasksPage = () => {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                placeholder="Vendor details or instructions…"
+                placeholder="Service provider details or instructions…"
               />
             </div>
           </div>
@@ -322,7 +322,7 @@ const AdminTasksPage = () => {
 const TasksPage = () => (
   <TasksPageSwitch
     viewerRole="admin"
-    roleName="Admin"
+    roleName="Owner"
     nav={nav}
     basePath="/dashboard/admin/tasks"
     invoicesHref="/dashboard/admin/accounting"

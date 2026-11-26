@@ -62,7 +62,7 @@ export function TasksHub({ viewerRole: role, basePath }: TasksHubProps) {
               </TabsTrigger>
             ) : null}
             {showSchedules ? <TabsTrigger value="recurring">Recurring</TabsTrigger> : null}
-            {showAdminTabs ? <TabsTrigger value="vendors">Vendors</TabsTrigger> : null}
+            {showAdminTabs ? <TabsTrigger value="vendors">Service providers</TabsTrigger> : null}
             {showAdminTabs ? <TabsTrigger value="settings">Settings</TabsTrigger> : null}
           </TabsList>
         </div>

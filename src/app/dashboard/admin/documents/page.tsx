@@ -105,7 +105,7 @@ const AdminDocumentsPage = () => {
 
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={nav}
       title="Tenant Documents"
       subtitle="Vault for leases, inspection sheets, policy docs, and shared records."

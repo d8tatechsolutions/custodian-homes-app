@@ -15,14 +15,14 @@ const AdminAccountingPage = () => {
 
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={nav}
       title="Accounting"
       subtitle="Revenue across your entire portfolio."
     >
       <InvoicesManager
         nav={nav}
-        roleName="Admin"
+        roleName="Owner"
         canManage
         isStaffScope
         tenantNames={tenantNames}

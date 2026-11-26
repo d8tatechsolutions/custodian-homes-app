@@ -1,3 +1,4 @@
+import { roleLabel as displayRole } from "@/lib/role-labels";
 import { isIP } from "node:net";
 import nodemailer from "nodemailer";
 import { BRAND, getAppUrl } from "@/lib/brand";
@@ -297,7 +298,8 @@ function createPasswordResetContent(name: string): string {
 }
 
 function createWelcomeContent(name: string, role: string): string {
-  const roleLabel = escapeHtml(role.charAt(0).toUpperCase() + role.slice(1));
+  // Shown with the same names users see in the app (e.g. admin -> "Owner").
+  const roleLabel = escapeHtml(displayRole(role));
   return `
     <p style="margin: 0 0 16px; font-size: 16px; color: ${TEXT_PRIMARY}; line-height: 1.6;">Hi <strong>${escapeHtml(name)}</strong>,</p>
     <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">Welcome to ${BRAND.name}! Your email has been verified and your account is now active as a <strong>${roleLabel}</strong>.</p>

@@ -14,12 +14,12 @@ async function loadOwnVendor(request: NextRequest, id: string) {
   const actor = await catalogActor(request);
   if (actor instanceof NextResponse) return actor;
   if (actor.role !== "admin") {
-    return NextResponse.json({ error: "Only an admin can manage vendors" }, { status: 403 });
+    return NextResponse.json({ error: "Only the owner can manage service providers" }, { status: 403 });
   }
   if (!isValidObjectId(id))
-    return NextResponse.json({ error: "Invalid vendor id" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid service provider id" }, { status: 400 });
   const vendor = await Vendor.findOne({ _id: id, ownerId: actor.userId }).lean();
-  if (!vendor) return NextResponse.json({ error: "Vendor not found" }, { status: 404 });
+  if (!vendor) return NextResponse.json({ error: "Service provider not found" }, { status: 404 });
   return { actor, vendor };
 }
 
@@ -33,7 +33,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const parsed = vendorUpdate.safeParse(await readJsonBody(request));
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid vendor", issues: parsed.error.flatten() },
+      { error: "Check the service provider details", issues: parsed.error.flatten() },
       { status: 400 },
     );
   }
@@ -82,7 +82,7 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   if (openTasks > 0) {
     return NextResponse.json(
       {
-        error: `This vendor has ${openTasks} open task(s); reassign them first or mark the vendor inactive`,
+        error: `This service provider has ${openTasks} open task(s); reassign them first or mark them inactive`,
       },
       { status: 409 },
     );

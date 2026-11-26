@@ -10,7 +10,7 @@ export default function AdminTaskPage() {
     <TaskDetailPage
       taskId={id}
       viewerRole="admin"
-      roleName="Admin"
+      roleName="Owner"
       nav={adminNav}
       basePath="/dashboard/admin/tasks"
       invoicesHref="/dashboard/admin/accounting"
