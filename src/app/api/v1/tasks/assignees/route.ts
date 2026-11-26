@@ -45,11 +45,16 @@ export async function GET(request: NextRequest) {
     isActive: true,
     role: { $in: ["admin", "custodian", "caretaker"] },
   })
-    .select("name role")
-    .lean()) as { _id: unknown; name?: string; role: string }[];
+    .select("name role staffTitle")
+    .lean()) as { _id: unknown; name?: string; role: string; staffTitle?: string }[];
 
   let staff = users
-    .map((u) => ({ id: String(u._id), name: u.name || "Unnamed", role: u.role }))
+    .map((u) => ({
+      id: String(u._id),
+      name: u.name || "Unnamed",
+      role: u.role,
+      staffTitle: u.staffTitle ?? "",
+    }))
     .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
   if (actor.role === "caretaker") staff = staff.filter((s) => s.id === actor.userId);
 

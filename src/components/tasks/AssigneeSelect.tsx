@@ -11,17 +11,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAssignees } from "@/hooks/use-maintenance";
+import { roleLabel } from "@/lib/role-labels";
 
 export type AssigneeChoice =
   | { kind: "staff"; userId: string }
   | { kind: "vendor"; vendorId: string }
   | null;
 
-const ROLE_LABEL: Record<string, string> = {
-  admin: "Admin",
-  custodian: "Custodian",
-  caretaker: "Caretaker",
-};
 const NONE = "__none__";
 
 export function encodeAssignee(choice: AssigneeChoice): string {
@@ -77,14 +73,14 @@ export function AssigneeSelect({
               <SelectLabel>Staff</SelectLabel>
               {assignees.staff.map((s) => (
                 <SelectItem key={s.id} value={`staff:${s.id}`}>
-                  {s.name} · {ROLE_LABEL[s.role] ?? s.role}
+                  {s.name} · {roleLabel(s.role, s.staffTitle)}
                 </SelectItem>
               ))}
             </SelectGroup>
           ) : null}
           {assignees.vendors.length > 0 ? (
             <SelectGroup>
-              <SelectLabel>Vendors</SelectLabel>
+              <SelectLabel>Service providers</SelectLabel>
               {assignees.vendors.map((v) => (
                 <SelectItem key={v.id} value={`vendor:${v.id}`}>
                   {v.name}
@@ -95,7 +91,7 @@ export function AssigneeSelect({
           ) : null}
           {empty && !loading ? (
             <SelectItem value="__empty__" disabled>
-              No staff or vendors on this property yet
+              No staff or service providers on this property yet
             </SelectItem>
           ) : null}
         </SelectContent>

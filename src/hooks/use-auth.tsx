@@ -12,6 +12,8 @@ export interface AuthUser {
   name?: string;
   role: Role;
   privileges?: string[];
+  /** "agent" for a caretaker the owner marked as their managing agent. */
+  staffTitle?: string;
   managedByOwnerId?: string;
   /** Mobile number in E.164 form, e.g. "+254712345678". */
   phone?: string;

@@ -40,7 +40,13 @@ interface Props {
 
 type Surface = "desktop" | "mobile";
 
-export const DashboardShell = ({ roleName, nav: allNav, title, subtitle, children }: Props) => {
+export const DashboardShell = ({
+  roleName: roleNameProp,
+  nav: allNav,
+  title,
+  subtitle,
+  children,
+}: Props) => {
   const { flags } = useReleaseFlags();
   const nav = useMemo(
     () => allNav.filter((item) => !item.releaseFlag || flags[item.releaseFlag]),
@@ -48,7 +54,12 @@ export const DashboardShell = ({ roleName, nav: allNav, title, subtitle, childre
   );
   const pathname = usePathname();
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
+  // A caretaker the owner marked as their managing agent is shown as "Agent".
+  const roleName =
+    roleNameProp === "Caretaker" && user?.role === "caretaker" && user.staffTitle === "agent"
+      ? "Agent"
+      : roleNameProp;
   const { openGroup, setOpenGroup } = useNavAccordion();
   const [mobileOpen, setMobileOpen] = useState(false);
 

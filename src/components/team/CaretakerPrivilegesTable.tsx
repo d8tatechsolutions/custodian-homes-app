@@ -19,6 +19,7 @@ import {
   type CaretakerRow,
   useCaretakers,
   useUpdateCaretakerPrivileges,
+  useUpdateCaretakerTitle,
 } from "@/hooks/use-caretakers";
 import { matchesQuery } from "@/lib/search";
 
@@ -33,11 +34,17 @@ const PRIVILEGES = [
 interface CaretakerPrivilegesTableProps {
   /** Owner/system-admin and privileged custodians may change privileges. */
   canAssign?: boolean;
+  /** Owner/system-admin may mark a caretaker as their managing agent ("Agent"). */
+  canSetAgent?: boolean;
 }
 
-export const CaretakerPrivilegesTable = ({ canAssign = true }: CaretakerPrivilegesTableProps) => {
+export const CaretakerPrivilegesTable = ({
+  canAssign = true,
+  canSetAgent = false,
+}: CaretakerPrivilegesTableProps) => {
   const { caretakers, loading, error, refetch } = useCaretakers();
   const { updatePrivileges, pendingId } = useUpdateCaretakerPrivileges();
+  const { setAgent, pendingId: titlePendingId } = useUpdateCaretakerTitle();
   const [rows, setRows] = useState<CaretakerRow[]>(caretakers);
   const [query, setQuery] = useState("");
 
@@ -61,6 +68,24 @@ export const CaretakerPrivilegesTable = ({ canAssign = true }: CaretakerPrivileg
       setRows((rs) => rs.map((r) => (r.id === row.id ? row : r)));
       const message = err instanceof Error ? err.message : "Failed to update privileges";
       toast.error("Could not update privileges", { description: message });
+    }
+  };
+
+  const toggleAgent = async (row: CaretakerRow, agent: boolean) => {
+    if (!canSetAgent) return;
+    setRows((rs) =>
+      rs.map((r) => (r.id === row.id ? { ...r, staffTitle: agent ? "agent" : "" } : r)),
+    );
+    try {
+      const staffTitle = await setAgent(row.id, agent);
+      setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, staffTitle } : r)));
+      toast.success(
+        agent ? `${row.name} is now shown as your agent` : `${row.name} is shown as a caretaker`,
+      );
+    } catch (err) {
+      setRows((rs) => rs.map((r) => (r.id === row.id ? row : r)));
+      const message = err instanceof Error ? err.message : "Failed to update title";
+      toast.error("Could not update title", { description: message });
     }
   };
 
@@ -114,6 +139,7 @@ export const CaretakerPrivilegesTable = ({ canAssign = true }: CaretakerPrivileg
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Properties</TableHead>
+              {canSetAgent && <TableHead className="text-center">Managing agent</TableHead>}
               <TableHead className="text-center">
                 <span className="sr-only">Create property</span>
               </TableHead>
@@ -134,20 +160,38 @@ export const CaretakerPrivilegesTable = ({ canAssign = true }: CaretakerPrivileg
           <TableBody>
             {visible.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                <TableCell
+                  colSpan={canSetAgent ? 9 : 8}
+                  className="py-8 text-center text-muted-foreground"
+                >
                   No caretakers match your search.
                 </TableCell>
               </TableRow>
             ) : (
               visible.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <span className="inline-flex items-center gap-2">
+                      {c.name}
+                      {c.staffTitle === "agent" && <Badge variant="outline">Agent</Badge>}
+                    </span>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
                     {c.email ?? c.phone ?? "—"}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{c.propertyCount}</Badge>
                   </TableCell>
+                  {canSetAgent && (
+                    <TableCell className="text-center">
+                      <Switch
+                        aria-label={`Show ${c.name} as managing agent`}
+                        checked={c.staffTitle === "agent"}
+                        disabled={titlePendingId === c.id}
+                        onCheckedChange={(checked) => toggleAgent(c, checked)}
+                      />
+                    </TableCell>
+                  )}
                   {PRIVILEGES.map((priv) => (
                     <TableCell key={priv.key} className="text-center">
                       <Switch

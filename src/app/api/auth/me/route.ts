@@ -50,6 +50,7 @@ export async function GET(request: Request) {
         name: user.name,
         role: user.role,
         privileges: user.privileges ?? [],
+        staffTitle: user.staffTitle ?? "",
         managedByOwnerId:
           user.role === "custodian" || user.role === "caretaker"
             ? ((await getManagedOwnerId(String(user._id))) ?? "")

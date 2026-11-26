@@ -22,6 +22,8 @@ export interface IUser {
   passwordHash: string;
   role: "tenant" | "caretaker" | "custodian" | "admin" | "broker" | "system-admin";
   privileges: string[];
+  /** Display title for staff: a caretaker marked "agent" is shown as "Agent". */
+  staffTitle?: "" | "agent";
   isActive: boolean;
   isVerified: boolean;
   phone: string;
@@ -82,6 +84,9 @@ const userSchema = new Schema<IUser>(
       ],
       default: [],
     },
+    // Caretakers who manage a property for its owner are shown as "Agent"
+    // (same permissions as a caretaker; label only).
+    staffTitle: { type: String, enum: ["", "agent"], default: "" },
     isActive: { type: Boolean, default: true },
     isVerified: { type: Boolean, default: false },
     // Mobile number in E.164 form, e.g. "+254712345678" (country code included).

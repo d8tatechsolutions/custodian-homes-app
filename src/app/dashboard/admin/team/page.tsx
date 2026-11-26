@@ -9,7 +9,7 @@ import { adminNav } from "@/config/dashboardNav";
 const AdminTeamPage = () => {
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={adminNav}
       title="Team"
       subtitle="Invite custodians and caretakers, assign privileges, and control what each team member can do."
@@ -19,7 +19,7 @@ const AdminTeamPage = () => {
         <CustodianManager />
         <div>
           <h3 className="mb-4 font-display text-lg">Caretaker privileges</h3>
-          <CaretakerPrivilegesTable canAssign />
+          <CaretakerPrivilegesTable canAssign canSetAgent />
         </div>
       </div>
     </DashboardShell>

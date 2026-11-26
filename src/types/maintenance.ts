@@ -148,7 +148,7 @@ export interface TaskScheduleRecord {
 }
 
 export interface AssigneeOptions {
-  staff: { id: string; name: string; role: string }[];
+  staff: { id: string; name: string; role: string; staffTitle?: string }[];
   vendors: { id: string; name: string; trades: string[]; phone: string }[];
 }
 

@@ -90,7 +90,9 @@ export async function GET(request: NextRequest) {
   }
 
   const caretakers = await User.find(filter)
-    .select(forPropertyAssignment ? "name" : "name email phone privileges userCode")
+    .select(
+      forPropertyAssignment ? "name" : "name email phone privileges userCode staffTitle",
+    )
     .sort({ name: 1 })
     .lean();
 
@@ -120,6 +122,7 @@ export async function GET(request: NextRequest) {
     privileges: forPropertyAssignment ? [] : (c.privileges ?? []),
     userCode: forPropertyAssignment ? undefined : (c.userCode ?? ""),
     propertyCount: countByCaretaker.get(String(c._id)) ?? 0,
+    staffTitle: forPropertyAssignment ? "" : (c.staffTitle ?? ""),
   }));
 
   return NextResponse.json({ data });
