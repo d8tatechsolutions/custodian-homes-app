@@ -6,6 +6,8 @@ import {
   getOrCreateBillingAccountForOwner,
   resolveBillingAccountForUnit,
 } from "@/lib/billing-accounts";
+import { isBrokerBidsEnabled } from "@/lib/feature-flags";
+import { checkListingPhotos } from "@/lib/listing-fingerprint";
 import { transitionListingState, validateListingPublish } from "@/lib/listings";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
@@ -284,6 +286,15 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     before: { version: listing.version },
     after: { ...updates, version: updatedListing.version },
   });
+
+  // Fraud check on changed photos (never blocks the save).
+  if (isBrokerBidsEnabled() && "media" in updates) {
+    await checkListingPhotos({
+      listingId: id,
+      propertyId: listing.propertyId,
+      urls: (updatedListing.media ?? []).map((m: { url: string }) => m.url),
+    });
+  }
 
   return NextResponse.json({ listing: updatedListing });
 }

@@ -1,5 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { isBrokerBidsEnabled } from "@/lib/feature-flags";
+import { checkListingPhotos } from "@/lib/listing-fingerprint";
 import { generateListingShareCode } from "@/lib/listings";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
@@ -226,6 +228,15 @@ export async function POST(request: NextRequest) {
     startsAt: new Date(),
     createdByUserId: userId,
   });
+
+  // Fraud check: flag photos already used on another property (never blocks the save).
+  if (isBrokerBidsEnabled()) {
+    await checkListingPhotos({
+      listingId: String(listing._id),
+      propertyId,
+      urls: (listing.media ?? []).map((m: { url: string }) => m.url),
+    });
+  }
 
   return NextResponse.json(
     {

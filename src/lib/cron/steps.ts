@@ -1,5 +1,6 @@
+import { expireBids } from "@/lib/broker-bids";
 import type { CronStep } from "@/lib/cron/daily";
-import { isTasksV2Enabled } from "@/lib/feature-flags";
+import { isBrokerBidsEnabled, isTasksV2Enabled } from "@/lib/feature-flags";
 import { refreshUsdKesRate } from "@/lib/fx";
 import { runDueSchedules } from "@/lib/maintenance/schedules";
 
@@ -19,6 +20,13 @@ export function dailySteps(): CronStep[] {
       run: async (now) => {
         if (!isTasksV2Enabled()) return { skipped: "TASKS_V2_ENABLED is off" };
         return runDueSchedules(now);
+      },
+    },
+    {
+      name: "broker-bid-expiry",
+      run: async (now) => {
+        if (!isBrokerBidsEnabled()) return { skipped: "BROKER_BIDS_ENABLED is off" };
+        return expireBids(now);
       },
     },
   ];
