@@ -8,6 +8,7 @@ import {
   DoorOpen,
   FileBarChart,
   FileText,
+  Handshake,
   Heart,
   Home,
   Mail,
@@ -186,6 +187,14 @@ export const custodianNav: DashNavItem[] = [
     icon: Wrench,
     group: "operations",
     releaseFlag: "tasksV2",
+  },
+  // Custodians approve broker requests on properties whose owner has no account.
+  {
+    to: "/dashboard/custodian/brokers",
+    label: "Broker requests",
+    icon: Handshake,
+    group: "people",
+    releaseFlag: "brokerBids",
   },
 ];
 export const brokerNav = buildDashboardNav("broker");

@@ -38,7 +38,6 @@ function bid(overrides: Partial<BidView> = {}): BidView {
         basis: "first_month_rent",
         rateBps: 1000,
         by: "broker",
-        byUserId: "br",
         at: "2026-11-26",
         message: "Know the area",
       },
@@ -128,7 +127,6 @@ describe("BrokerRequestsPanel (broker)", () => {
           basis: "first_month_rent",
           rateBps: 800,
           by: "owner",
-          byUserId: "owner-1",
           at: "2026-11-27",
         },
       ],
@@ -150,6 +148,7 @@ describe("AddBrokerDialog", () => {
       "/api/v1/brokers/invite": {
         id: "u9",
         name: "Amina",
+        emailSent: false,
         inviteUrl: "https://x/auth/verify?token=t",
         inviteExpiresAt: "z",
       },

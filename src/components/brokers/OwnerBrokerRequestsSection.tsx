@@ -13,9 +13,12 @@ import { useReleaseFlags } from "@/hooks/use-fx";
 export function OwnerBrokerRequestsSection({
   currentUserId,
   onBrokerAdded,
+  canAddBrokers = true,
 }: {
   currentUserId: string;
   onBrokerAdded?: () => void;
+  /** Custodians review requests but cannot add brokers. */
+  canAddBrokers?: boolean;
 }) {
   const { flags, loading } = useReleaseFlags();
   const { bids, refetch } = useBrokerBids(flags.brokerBids);
@@ -41,11 +44,13 @@ export function OwnerBrokerRequestsSection({
             Brokers asking to market your listings, with the commission they propose.
           </p>
         </div>
-        <AddBrokerDialog
-          inviterRole="admin"
-          currentUserId={currentUserId}
-          onAdded={onBrokerAdded}
-        />
+        {canAddBrokers ? (
+          <AddBrokerDialog
+            inviterRole="admin"
+            currentUserId={currentUserId}
+            onAdded={onBrokerAdded}
+          />
+        ) : null}
       </div>
       <BidRequestsPanel bids={bids} onChanged={refetch} />
       <FxAttribution />

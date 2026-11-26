@@ -1,5 +1,5 @@
 import { propertyTitleMap } from "@/app/api/v1/_helpers";
-import { awaiting, type BidDoc, isOpen, latestOffer } from "@/lib/broker-bids";
+import { awaiting, type BidDoc, isOpen } from "@/lib/broker-bids";
 import { Attribution } from "@/models/Attribution";
 import { BrokerProfile } from "@/models/BrokerProfile";
 import { Listing } from "@/models/Listing";
@@ -17,7 +17,8 @@ export interface BidView {
   awaiting: "owner" | "broker" | null;
   expiresAt: string;
   createdAt: string;
-  offers: BidDoc["offers"];
+  /** Offer history without the internal account ids of who made each one. */
+  offers: Omit<BidDoc["offers"][number], "byUserId">[];
   decisionNote: string;
   shareCode: string;
   broker: { id: string; name: string; agency: string; tenantsBrought: number };
@@ -69,7 +70,7 @@ export async function viewBids(bids: BidDoc[], now = new Date()): Promise<BidVie
       awaiting: lapsed ? null : awaiting(b),
       expiresAt: new Date(b.expiresAt).toISOString(),
       createdAt: b.createdAt ? new Date(b.createdAt).toISOString() : "",
-      offers: b.offers,
+      offers: b.offers.map(({ byUserId: _hidden, ...offer }) => offer),
       decisionNote: b.decisionNote ?? "",
       shareCode: b.result?.shareCode ?? "",
       broker: {
@@ -80,8 +81,4 @@ export async function viewBids(bids: BidDoc[], now = new Date()): Promise<BidVie
       },
     };
   });
-}
-
-export function latestTerms(view: Pick<BidView, "offers">) {
-  return latestOffer(view);
 }

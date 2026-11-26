@@ -235,6 +235,18 @@ async function roleOf(userId: string): Promise<Role> {
   return (user?.role ?? "admin") as Role;
 }
 
+/**
+ * Who the broker records are granted as. Custodians approve requests for
+ * owners without an account (client decision) but do not hold the broker
+ * permissions themselves, so the records are created on behalf of the
+ * property's owner account; the custodian stays recorded as the decider.
+ */
+function granterFor(actor: { userId: string; role: Role }, bid: Pick<BidDoc, "ownerId">) {
+  return actor.role === "custodian" && bid.ownerId
+    ? { userId: bid.ownerId, role: "admin" as Role }
+    : actor;
+}
+
 /** Owner side: approve the broker's terms, reject, or counter with new terms. */
 export async function decideBid(
   actor: { userId: string; role: Role },
@@ -293,7 +305,7 @@ export async function decideBid(
     try {
       const offer = latestOffer(bid);
       if (!offer) throw new BidError("This request has no terms", 409);
-      const result = await finalise(bid, actor, offer);
+      const result = await finalise(bid, granterFor(actor, bid), offer);
       await BrokerBid.updateOne({ _id: bid._id }, { $set: { result } });
     } catch (error) {
       // Re-open so the approver can retry; nothing half-done is left marked accepted.
@@ -350,7 +362,10 @@ export async function respondToBid(
       ).lean();
       if (!claimed) throw new BidError("This request changed meanwhile", 409);
       try {
-        const granter = { userId: counter.byUserId, role: await roleOf(counter.byUserId) };
+        const granter = granterFor(
+          { userId: counter.byUserId, role: await roleOf(counter.byUserId) },
+          bid,
+        );
         const result = await finalise(bid, granter, counter);
         await BrokerBid.updateOne(
           { _id: bid._id },

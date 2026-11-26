@@ -2,7 +2,6 @@ import type { StoredTerms } from "@/components/brokers/CommissionTermsFields";
 
 export interface BidOfferView extends StoredTerms {
   by: "broker" | "owner";
-  byUserId: string;
   message?: string;
   at: string;
 }

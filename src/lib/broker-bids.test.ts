@@ -210,6 +210,27 @@ describe("decideBid", () => {
     );
   });
 
+  it("a custodian approver grants the records on behalf of the property's owner", async () => {
+    const custodian = { userId: "cust-1", role: "custodian" as const };
+    s.bid.findById.mockReturnValue(buildQuery(bid({ approverUserId: "cust-1" })));
+    s.bid.findOneAndUpdate.mockReturnValue(buildQuery({ ...bid(), status: "accepted" }));
+    s.brokers.authorizeBroker.mockResolvedValue({ _id: "auth-1" });
+    s.agreement.findOne.mockReturnValue(buildQuery(null));
+    s.brokers.createCommissionAgreement.mockResolvedValue({ _id: "agr-1" });
+    s.agreement.updateOne.mockResolvedValue({});
+    s.brokers.createBrokerListingPublisher.mockResolvedValue({ _id: "pub-1", shareCode: "brk_1" });
+    await decideBid(custodian, "bid-1", { action: "approve" }, NOW);
+    expect(s.brokers.authorizeBroker).toHaveBeenCalledWith(
+      { userId: "owner-1", role: "admin" },
+      expect.objectContaining({ brokerId: "broker-1" }),
+    );
+    expect(s.bid.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: "bid-1", status: "pending" },
+      { $set: expect.objectContaining({ status: "accepted", decidedByUserId: "cust-1" }) },
+      { new: true },
+    );
+  });
+
   it("re-opens the request when approval fails part-way", async () => {
     s.bid.findById.mockReturnValue(buildQuery(bid()));
     s.bid.findOneAndUpdate.mockReturnValue(buildQuery({ ...bid(), status: "accepted" }));
