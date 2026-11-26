@@ -84,12 +84,45 @@ Changes are additive wherever possible. The main ones:
   - The invite-failure logs in the admin users, caretakers, custodians and tenants routes.
 - **`api/v1/listings/[id]` and `api/v1/listings`:** id, body and photo validation (see above).
 - **`checkSameOrigin`:** Preview and bare-domain writes (see above).
+- **Sign-up and email verification:**
+  - Tested end to end on the live site: sign-up, email in the inbox, link, dashboard, sign-in.
+  - SMTP on Vercel works. The fixes below are for the dead ends users could hit. The account
+    and verification rules are unchanged, including the 24-hour expiry and rate limits.
+  - **`auth/verify/page.tsx`:**
+    - The page could show "Verification failed" even though the account had just been
+      confirmed. This happened because the verify request ran twice and the link only works
+      once: always under dev StrictMode, and in production on a double load.
+    - All runs for the same token now share one request (`verifyOnce`).
+  - **`api/auth` sign-in:**
+    - The password is now checked before the verified check.
+    - An unverified account gets `403 { code: "EMAIL_NOT_VERIFIED", email }`, so a wrong
+      password never reveals that an account is unconfirmed.
+  - **`api/auth` sign-up:**
+    - Signing up again with an unconfirmed email gets `409 { code: "EMAIL_NOT_VERIFIED" }`.
+      Before, it said "Email already registered" with no way forward.
+    - A phone number already used by another account was a 500 (Mongo E11000 on the unique
+      `phone` index). It is now a 409 with a clear message.
+    - Validation errors return the first field's message instead of "Invalid input".
+  - **`auth/page.tsx` and `hooks/use-auth.tsx`:**
+    - On `EMAIL_NOT_VERIFIED`, the form shows the "check your inbox" panel with a "Send a new
+      verification link" button, instead of an error toast.
+    - `use-auth` throws `AuthError` (with `code` and `email`).
+    - The national ID check on the form now matches the server: letters and numbers only,
+      4–32 characters.
+  - Tests are in `api/auth/route.test.ts` ("new users who have not confirmed their email") and
+    `auth/verify/page.test.tsx` (including a StrictMode case).
 
 ## Still open
 
 - UploadThing has no patched 7.x release for the current advisory, and private files need a
   paid plan. Task photos and receipts rely on unguessable links that are only returned to
   people allowed to see the task.
+
+## Local `.env` note
+
+Next.js expands `$` in `.env` values, even inside quotes. If `EMAIL_PASS` (or any secret)
+contains `$`, write it as `\$` in your local `.env`, or SMTP fails with `535` (bad
+credentials). Vercel's environment variables are used as is and are not affected.
 
 ## Data change already made (dev database only)
 
