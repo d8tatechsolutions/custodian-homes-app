@@ -9,6 +9,7 @@ import {
   expiryFromNow,
   toPrivateBrokerListing,
 } from "@/lib/broker-listings";
+import { notifyBrokerListingReviewed } from "@/lib/broker-notify";
 import { checkSameOrigin } from "@/lib/rate-limit";
 import { requireSystemAdmin } from "@/lib/system-admin-guard";
 import { BrokerListing } from "@/models/BrokerListing";
@@ -60,5 +61,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     after: { note: parsed.data.note },
   });
   const fresh = (await BrokerListing.findById(id).lean()) as BrokerListingDoc;
+  await notifyBrokerListingReviewed(fresh);
   return NextResponse.json({ data: toPrivateBrokerListing(fresh) });
 }

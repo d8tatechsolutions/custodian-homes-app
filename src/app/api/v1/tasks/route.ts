@@ -4,11 +4,12 @@ import type { DashboardActor } from "@/app/api/v1/_helpers";
 import { propertyTitleMap, readJsonBody, resolveDashboardActor } from "@/app/api/v1/_helpers";
 import { TASK_STATUSES } from "@/lib/domain-enums";
 import { isTasksV2Enabled } from "@/lib/feature-flags";
-import { queueTaskNotice, recordTaskActivity } from "@/lib/maintenance/activity";
+import { recordTaskActivity } from "@/lib/maintenance/activity";
 import { resolveAssignee } from "@/lib/maintenance/assignee";
 import { nairobiToday } from "@/lib/maintenance/dates";
 import { ACTIVE_TASK_STATUSES, TASK_STATUSES_V2 } from "@/lib/maintenance/enums";
 import { loadTaskLocation } from "@/lib/maintenance/location-loader";
+import { type NoticeTask, notifyTaskAssigned, notifyVendorJob } from "@/lib/maintenance/notify";
 import { serializeTaskV2, type TaskDoc } from "@/lib/maintenance/route-helpers";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
@@ -330,9 +331,10 @@ async function createTaskV2(
       : "Created",
     { complaintIds },
   );
-  if (assignee.assignee?.kind === "staff" && assignee.assignedTo !== actor.userId) {
-    await queueTaskNotice(task, who, "Assignee: you have a new task", [assignee.assignedTo]);
-  }
+  const created = task.toObject() as NoticeTask;
+  if (assignee.assignee?.kind === "staff") await notifyTaskAssigned(created, who);
+  // A new task has no quote yet, so a service provider can be told straight away.
+  if (assignee.assignee?.kind === "vendor") await notifyVendorJob(created, who, "assigned");
 
   const titles = await propertyTitleMap([propertyId]);
   return NextResponse.json(

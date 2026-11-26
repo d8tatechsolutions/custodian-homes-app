@@ -24,6 +24,12 @@ vi.mock("@/models/BrokerProfile", () => ({ BrokerProfile: s.profile }));
 vi.mock("@/models/User", () => ({ User: s.user }));
 vi.mock("@/models/ListingFlag", () => ({ ListingFlag: s.flag }));
 vi.mock("@/lib/listing-fingerprint", () => ({ checkListingPhotos: vi.fn().mockResolvedValue(0) }));
+const notify = vi.hoisted(() => ({
+  notifyBrokerEnquiry: vi.fn(),
+  notifyBrokerListingSubmitted: vi.fn(),
+  notifyBrokerListingReviewed: vi.fn(),
+}));
+vi.mock("@/lib/broker-notify", () => notify);
 
 import { PATCH } from "@/app/api/v1/broker-listings/[id]/route";
 import { POST as SUBMIT } from "@/app/api/v1/broker-listings/[id]/submit/route";
@@ -177,8 +183,10 @@ describe("routes", () => {
         status: "approved",
         expiresAt: new Date(Date.now() + 86_400_000),
         brokerUserId: "broker-1",
+        title: "Villa",
       }),
     );
+    s.enquiry.create.mockResolvedValue({ _id: "enq-1" });
     const real = await ENQUIRE(
       buildRequest(`/api/v1/marketplace/broker-listings/${ID}/enquiry`, {
         method: "POST",
@@ -190,5 +198,11 @@ describe("routes", () => {
     expect(s.enquiry.create).toHaveBeenCalledWith(
       expect.objectContaining({ brokerUserId: "broker-1", name: "Visitor" }),
     );
+    // The broker is told; the visitor's contact details are not passed to the notice.
+    expect(notify.notifyBrokerEnquiry).toHaveBeenCalledWith({
+      enquiryId: "enq-1",
+      brokerUserId: "broker-1",
+      title: "Villa",
+    });
   });
 });

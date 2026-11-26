@@ -36,6 +36,14 @@ const TYPE_LABELS: Record<AppNotification["type"], string> = {
   "move-request:created": "Move request",
   "move-request:decided": "Move request decided",
   "unit:available": "Unit available",
+  "task:assigned": "Task assigned",
+  "task:reminder": "Task reminder",
+  "task:cost-approval": "Approval needed",
+  "task:cost-decided": "Cost decision",
+  "task:update": "Maintenance update",
+  "broker:bid": "Broker request",
+  "broker:listing": "Broker listing",
+  "listing:flagged": "Listing flagged",
 };
 
 type BadgePropsVariant = "default" | "destructive" | "secondary" | "outline";
@@ -44,6 +52,7 @@ const typeVariant = (type: AppNotification["type"]): BadgePropsVariant => {
   switch (type) {
     case "invoice:overdue":
     case "lease:expiring":
+    case "listing:flagged":
       return "destructive";
     case "complaint:created":
     case "complaint:status-changed":

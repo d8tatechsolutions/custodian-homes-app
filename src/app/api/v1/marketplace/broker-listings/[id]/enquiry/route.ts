@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { type BrokerListingDoc, isLive } from "@/lib/broker-listings";
+import { notifyBrokerEnquiry } from "@/lib/broker-notify";
 import { durableRateLimit } from "@/lib/durable-rate-limit";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
@@ -55,18 +56,23 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   await connectToDatabase();
   const listing = (await BrokerListing.findById(id)
-    .select("status expiresAt brokerUserId")
-    .lean()) as Pick<BrokerListingDoc, "status" | "expiresAt" | "brokerUserId"> | null;
+    .select("status expiresAt brokerUserId title")
+    .lean()) as Pick<BrokerListingDoc, "status" | "expiresAt" | "brokerUserId" | "title"> | null;
   if (!listing || !isLive(listing))
     return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  await BrokerEnquiry.create({
+  const enquiry = await BrokerEnquiry.create({
     brokerListingId: id,
     brokerUserId: listing.brokerUserId,
     name: parsed.data.name,
     phone: parsed.data.phone,
     email: parsed.data.email,
     message: parsed.data.message,
+  });
+  await notifyBrokerEnquiry({
+    enquiryId: String(enquiry._id),
+    brokerUserId: listing.brokerUserId,
+    title: listing.title,
   });
   return NextResponse.json({ data: { ok: true } }, { status: 201 });
 }

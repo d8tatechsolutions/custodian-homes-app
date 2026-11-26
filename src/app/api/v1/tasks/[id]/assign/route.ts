@@ -1,16 +1,17 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/app/api/v1/_helpers";
-import { queueTaskNotice, recordTaskActivity } from "@/lib/maintenance/activity";
+import { recordTaskActivity } from "@/lib/maintenance/activity";
 import { resolveAssignee } from "@/lib/maintenance/assignee";
+import { type NoticeTask, notifyTaskAssigned, notifyVendorJob } from "@/lib/maintenance/notify";
 import { guardMutation, loadScopedTask, respondWithTask } from "@/lib/maintenance/route-helpers";
 import { assignInput } from "@/lib/schemas/maintenance";
 import { Task } from "@/models/Task";
 
 /**
  * (Re)assigns a task to a staff member or vendor, or clears the assignee.
- * A vendor is only told about the job once its cost is approved (or when no
- * approval is needed), so assigning a vendor queues no notice by itself.
+ * A service provider is emailed once work can start: now, unless a quote is
+ * waiting for approval or was rejected (then on approval).
  */
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const guard = await guardMutation(request);
@@ -59,16 +60,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     resolved.assignee ? `Assigned to ${resolved.assignedToName || "someone"}` : "Unassigned",
     { assignee: resolved.assignee },
   );
-  if (resolved.assignee?.kind === "staff" && resolved.assignedTo !== actor.userId) {
-    await queueTaskNotice(task, who, "Assignee: you have a new task", [resolved.assignedTo]);
-  }
+  const assigned = { ...(task as NoticeTask), assignee: resolved.assignee };
+  if (resolved.assignee?.kind === "staff") await notifyTaskAssigned(assigned, who);
   if (resolved.assignee?.kind === "vendor") {
     const approval = task.cost?.approval?.status;
-    if (task.cost?.quote && (approval === "approved" || approval === "not_required")) {
-      // Cost cleared: the vendor can be told now (Phase 5 sends the email).
-      await queueTaskNotice(task, who, "Vendor: job details", [], {
-        vendorId: resolved.assignee.vendorId,
-      });
+    if (approval !== "pending" && approval !== "rejected") {
+      await notifyVendorJob(assigned, who, approval === "approved" ? "approved" : "assigned");
     }
   }
   return respondWithTask(task._id);

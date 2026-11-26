@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { BidError, respondToBid } from "@/lib/broker-bids";
 import { viewBids } from "@/lib/broker-bids-view";
+import { notifyBidEvent } from "@/lib/broker-notify";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
 import { authenticate } from "@/lib/permissions";
@@ -39,6 +40,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   try {
     const bid = await respondToBid(auth.userId, id, parsed.data.action);
     const [view] = await viewBids([bid]);
+    const event = {
+      accept: "counter-accepted",
+      decline: "counter-declined",
+      withdraw: "withdrawn",
+    } as const;
+    await notifyBidEvent(view, bid.approverUserId, event[parsed.data.action]);
     return NextResponse.json({ data: view });
   } catch (error) {
     if (error instanceof BidError)

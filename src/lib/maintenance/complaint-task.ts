@@ -1,5 +1,6 @@
 import { addDays, nairobiToday } from "@/lib/maintenance/dates";
 import { COMPLAINT_TASK_DUE_DAYS } from "@/lib/maintenance/enums";
+import { type NoticeTask, notifyTaskAssigned } from "@/lib/maintenance/notify";
 import { Complaint } from "@/models/Complaint";
 import { ManagementAssignment } from "@/models/ManagementAssignment";
 import { Task } from "@/models/Task";
@@ -178,6 +179,13 @@ export async function createTaskForComplaint(
         : "Created from a tenant complaint (no caretaker assigned to this location)",
       data: { complaintId },
     });
+    if (caretaker) {
+      await notifyTaskAssigned(task.toObject() as NoticeTask, {
+        userId: "system",
+        role: "system",
+        name: "A tenant complaint",
+      });
+    }
     return taskId;
   } catch (error) {
     console.error(

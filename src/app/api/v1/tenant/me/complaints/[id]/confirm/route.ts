@@ -2,7 +2,8 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody, resolveDashboardActor } from "@/app/api/v1/_helpers";
-import { queueTaskNotice, recordTaskActivity } from "@/lib/maintenance/activity";
+import { recordTaskActivity } from "@/lib/maintenance/activity";
+import { type NoticeTask, notifyTaskNotFixed } from "@/lib/maintenance/notify";
 import { guardMutation, tasksV2Disabled } from "@/lib/maintenance/route-helpers";
 import { connectToDatabase } from "@/lib/mongoose";
 import { requirePermission } from "@/lib/permissions";
@@ -62,8 +63,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const now = new Date();
   const who = { userId: actor.userId, role: "tenant", name: "Tenant" };
   const tasks = (await Task.find({ complaintIds: String(complaint._id) })
-    .select("_id ownerId status")
-    .lean()) as { _id: unknown; ownerId: string; status: string }[];
+    .select(
+      "_id ownerId status title propertyId propertyName location dueDate priority assignee createdBy",
+    )
+    .lean()) as (NoticeTask & { status: string })[];
 
   if (parsed.data.fixed) {
     await Complaint.updateOne(
@@ -108,7 +111,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         `Tenant says it is NOT fixed${parsed.data.note ? `: ${parsed.data.note}` : ""} — task reopened`,
         { complaintId: id },
       );
-      await queueTaskNotice(t, who, "Staff: tenant says the issue is not fixed", []);
+      await notifyTaskNotFixed(t, parsed.data.note ?? "");
     }
   }
   return NextResponse.json({ data: { id, fixed: parsed.data.fixed } });

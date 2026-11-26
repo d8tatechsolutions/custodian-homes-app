@@ -2,6 +2,7 @@ import { expireBids } from "@/lib/broker-bids";
 import type { CronStep } from "@/lib/cron/daily";
 import { isBrokerBidsEnabled, isTasksV2Enabled } from "@/lib/feature-flags";
 import { refreshUsdKesRate } from "@/lib/fx";
+import { runTaskReminders } from "@/lib/maintenance/notify";
 import { runDueSchedules } from "@/lib/maintenance/schedules";
 import { BrokerListing } from "@/models/BrokerListing";
 
@@ -21,6 +22,14 @@ export function dailySteps(): CronStep[] {
       run: async (now) => {
         if (!isTasksV2Enabled()) return { skipped: "TASKS_V2_ENABLED is off" };
         return runDueSchedules(now);
+      },
+    },
+    {
+      // After recurring-tasks, so copies created today are included.
+      name: "task-reminders",
+      run: async (now) => {
+        if (!isTasksV2Enabled()) return { skipped: "TASKS_V2_ENABLED is off" };
+        return runTaskReminders(now);
       },
     },
     {

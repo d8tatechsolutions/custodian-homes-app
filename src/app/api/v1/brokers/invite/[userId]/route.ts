@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { getAppUrl } from "@/lib/brand";
+import { BROKER_INVITE_TTL_MS, deliverBrokerInvite } from "@/lib/broker-invite";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
 import { authenticate } from "@/lib/permissions";
@@ -10,10 +10,8 @@ import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { BrokerProfile } from "@/models/BrokerProfile";
 import { User } from "@/models/User";
 
-const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
-
 /**
- * Issues a fresh set-password link for a broker who has not activated yet.
+ * Re-sends a fresh set-password link to a broker who has not activated yet.
  * Only the person who added the broker, or the system-admin, may do this.
  */
 export async function POST(request: NextRequest, context: { params: Promise<{ userId: string }> }) {
@@ -41,10 +39,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ us
   if (!profile || (caller.role !== "system-admin" && profile.addedByUserId !== auth.userId)) {
     return NextResponse.json({ error: "Broker not found" }, { status: 404 });
   }
-  const broker = (await User.findById(userId).select("isActive isVerified role").lean()) as {
+  const broker = (await User.findById(userId)
+    .select("isActive isVerified role email name")
+    .lean()) as {
     isActive?: boolean;
     isVerified?: boolean;
     role?: string;
+    email?: string;
+    name?: string;
   } | null;
   if (broker?.role !== "broker")
     return NextResponse.json({ error: "Broker not found" }, { status: 404 });
@@ -56,15 +58,16 @@ export async function POST(request: NextRequest, context: { params: Promise<{ us
   }
 
   const token = crypto.randomUUID();
-  const expires = new Date(Date.now() + INVITE_TTL_MS);
+  const expires = new Date(Date.now() + BROKER_INVITE_TTL_MS);
   await User.updateOne(
     { _id: userId },
     { $set: { verificationToken: token, verificationTokenExpiry: expires } },
   );
-  return NextResponse.json({
-    data: {
-      inviteUrl: `${getAppUrl()}/auth/verify?token=${token}&invited=1`,
-      inviteExpiresAt: expires.toISOString(),
-    },
+  const delivery = await deliverBrokerInvite({
+    email: broker.email ?? "",
+    name: broker.name ?? "",
+    token,
+    expiresAt: expires,
   });
+  return NextResponse.json({ data: delivery });
 }

@@ -88,7 +88,11 @@ function useLoad<T>(load: () => Promise<T>, initial: T) {
     void tick;
     setLoading(true);
     load()
-      .then((d) => !cancelled && (setData(d), setError(null)))
+      .then((d) => {
+        if (cancelled) return;
+        setData(d);
+        setError(null);
+      })
       .catch(
         (e: unknown) => !cancelled && setError(e instanceof Error ? e.message : "Could not load"),
       )
@@ -131,12 +135,14 @@ function BrokersPanel({ currentUserId }: { currentUserId: string }) {
 
   const newLink = async (row: BrokerRow) => {
     try {
-      const d = await apiRequest<{ inviteUrl: string }>(`/api/v1/brokers/invite/${row.userId}`, {
-        method: "POST",
-      });
-      setLink(d.inviteUrl);
+      const d = await apiRequest<{ emailSent: boolean; inviteUrl?: string }>(
+        `/api/v1/brokers/invite/${row.userId}`,
+        { method: "POST" },
+      );
+      if (d.emailSent) toast.success(`New set-password link emailed to ${row.email}`);
+      else if (d.inviteUrl) setLink(d.inviteUrl);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not create a link");
+      toast.error(e instanceof Error ? e.message : "Could not send a new link");
     }
   };
 
@@ -219,7 +225,7 @@ function BrokersPanel({ currentUserId }: { currentUserId: string }) {
                 size="sm"
                 variant="ghost"
                 onClick={() => void newLink(r)}
-                aria-label="New set-password link"
+                aria-label="Re-send set-password link"
               >
                 <Link2 className="h-3.5 w-3.5" />
               </Button>
@@ -268,7 +274,10 @@ function BrokersPanel({ currentUserId }: { currentUserId: string }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New set-password link</DialogTitle>
-            <DialogDescription>Valid for 24 hours. Any older link stops working.</DialogDescription>
+            <DialogDescription>
+              The email could not be sent, so share this link yourself. Valid for 24 hours; any
+              older link stops working.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
             <Input

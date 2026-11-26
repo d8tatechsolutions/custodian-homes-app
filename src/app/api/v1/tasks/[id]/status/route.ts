@@ -2,8 +2,9 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { canReopenCancelled } from "@/lib/maintenance/access";
-import { queueTaskNotice, recordTaskActivity } from "@/lib/maintenance/activity";
+import { recordTaskActivity } from "@/lib/maintenance/activity";
 import { TASK_STATUS_LABELS, type TaskStatusV2 } from "@/lib/maintenance/enums";
+import { type NoticeTask, notifyTenantProgress } from "@/lib/maintenance/notify";
 import { guardMutation, loadScopedTask, respondWithTask } from "@/lib/maintenance/route-helpers";
 import { canTransition } from "@/lib/maintenance/status";
 import { statusChangeInput } from "@/lib/schemas/maintenance";
@@ -102,6 +103,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         { _id: { $in: complaintIds }, status: "open" },
         { $set: { status: "in-progress", ...stamp } },
       );
+      // Only the first start is news to the tenant (not resuming after parts).
+      if (!task.startedAt) await notifyTenantProgress(task as NoticeTask, "started");
     }
     if ((to === "done" || to === "cancelled") && parsed.data.resolveComplaints) {
       await Complaint.updateMany(
@@ -125,7 +128,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       });
     }
     if (to === "done") {
-      await queueTaskNotice(task, who, "Tenant: work done — is it fixed?", [], { complaintIds });
+      await notifyTenantProgress(task as NoticeTask, "done");
     }
   }
 

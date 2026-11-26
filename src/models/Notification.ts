@@ -13,6 +13,16 @@ export const NOTIFICATION_TYPES = [
   "move-request:created",
   "move-request:decided",
   "unit:available",
+  // Tasks & Maintenance
+  "task:assigned",
+  "task:reminder",
+  "task:cost-approval",
+  "task:cost-decided",
+  "task:update",
+  // Brokers & marketplace
+  "broker:bid",
+  "broker:listing",
+  "listing:flagged",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

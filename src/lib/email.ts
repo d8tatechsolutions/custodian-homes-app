@@ -492,7 +492,9 @@ function inviteRoleCopy(role: string): string {
     ? `You've been added as a caretaker at ${BRAND.name}. You can now help manage properties, tenants, and day-to-day operations once your account is active.`
     : role === "custodian"
       ? `You've been added as a custodian at ${BRAND.name}. You can now help manage properties and units on behalf of an owner once your account is active.`
-      : `You've been added as a tenant at ${BRAND.name}. You can now view your lease, invoices, and announcements once your account is active.`;
+      : role === "broker"
+        ? `You've been added as a verified broker at ${BRAND.name}. Once your account is active you can request to list properties, share listings and track your commissions.`
+        : `You've been added as a tenant at ${BRAND.name}. You can now view your lease, invoices, and announcements once your account is active.`;
 }
 
 function createInviteContent(name: string, role: string): string {
@@ -544,7 +546,7 @@ export async function sendWelcomeEmail(
   const content = createWelcomeContent(name, role);
   const html = renderTemplate(content, appUrl, email);
   const text =
-    `Hi ${name},\n\nWelcome to ${BRAND.name}! Your email has been verified and your account is now active as a ${role.charAt(0).toUpperCase() + role.slice(1)}.\n\n` +
+    `Hi ${name},\n\nWelcome to ${BRAND.name}! Your email has been verified and your account is now active as a ${displayRole(role)}.\n\n` +
     `You can now access your dashboard and start managing your properties, applications, and more: ${appUrl}/dashboard\n\n` +
     `If you have any questions, our support team is here to help.` +
     createTextFooter(email);

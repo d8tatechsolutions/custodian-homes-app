@@ -2,9 +2,14 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { formatKES } from "@/lib/format";
-import { queueTaskNotice, recordTaskActivity } from "@/lib/maintenance/activity";
+import { recordTaskActivity } from "@/lib/maintenance/activity";
 import { quoteNeedsApproval, resolveCostApprover } from "@/lib/maintenance/approver";
 import { emptyCost } from "@/lib/maintenance/costs";
+import {
+  type NoticeTask,
+  notifyCostAwaitingApproval,
+  notifyVendorJob,
+} from "@/lib/maintenance/notify";
 import { guardMutation, loadScopedTask, respondWithTask } from "@/lib/maintenance/route-helpers";
 import { isActiveStatus } from "@/lib/maintenance/status";
 import { quoteInput } from "@/lib/schemas/maintenance";
@@ -107,19 +112,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     { amount: parsed.data.amount, needsApproval },
   );
   if (needsApproval) {
-    await queueTaskNotice(
-      task,
-      who,
-      "Approver: a cost is waiting for your approval",
-      [approverUserId],
-      {
-        amount: parsed.data.amount,
-      },
-    );
+    await notifyCostAwaitingApproval(task as NoticeTask, approverUserId, parsed.data.amount);
   } else if (task.assignee?.kind === "vendor") {
-    await queueTaskNotice(task, who, "Vendor: job details", [], {
-      vendorId: task.assignee.vendorId,
-    });
+    // No approval step: the provider can start (sent once; skipped if already told).
+    await notifyVendorJob(task as NoticeTask, who, "assigned");
   }
   return respondWithTask(task._id);
 }

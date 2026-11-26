@@ -4,8 +4,8 @@ import { TASK_ACTIVITY_KINDS } from "@/lib/maintenance/enums";
 /**
  * Append-only history for a task: comments plus every meaningful change
  * (status, assignment, photos, quote, approval, costs, complaint links, tenant
- * confirmation). Also records notifications that will be sent once the
- * notification phase ships (`kind: "notify"`), so nothing is lost meanwhile.
+ * confirmation). `kind: "notify"` rows record emails sent to service
+ * providers (who have no account, so no in-app notification).
  */
 const taskActivitySchema = new Schema(
   {

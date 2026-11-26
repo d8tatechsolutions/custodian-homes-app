@@ -28,6 +28,8 @@ import { useBrokerBids } from "@/hooks/use-broker-bids";
 import { useReleaseFlags } from "@/hooks/use-fx";
 import { formatKES } from "@/lib/format";
 
+const LINKABLE_TABS = new Set(["requests", "own", "enquiries", "find"]);
+
 export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
   const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
@@ -41,7 +43,9 @@ export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
   const { flags } = useReleaseFlags();
   const { bids, refetch: refetchBids } = useBrokerBids(flags.brokerBids);
   useEffect(() => {
-    setTab(initialTab ?? "listings");
+    // Notification links open a specific tab with `?tab=` (e.g. requests).
+    const fromLink = new URLSearchParams(window.location.search).get("tab") ?? "";
+    setTab(LINKABLE_TABS.has(fromLink) ? fromLink : (initialTab ?? "listings"));
   }, [initialTab]);
 
   // Profile form state

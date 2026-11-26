@@ -1,6 +1,7 @@
 import { isDuplicateKeyError } from "@/app/api/v1/_helpers";
 import { recordTaskActivity } from "@/lib/maintenance/activity";
 import { addDays, nairobiToday } from "@/lib/maintenance/dates";
+import { type NoticeTask, notifyTaskAssigned, notifyVendorJob } from "@/lib/maintenance/notify";
 import {
   describeRecurrence,
   dueOccurrences,
@@ -98,6 +99,10 @@ export async function generateScheduleOccurrences(
         `Created by the recurring schedule for ${day}`,
         { scheduleId, occurrenceDate: day },
       );
+      const copy = task.toObject() as NoticeTask;
+      const system = { userId: "system", role: "system", name: "A recurring schedule" };
+      if (copy.assignee?.kind === "staff") await notifyTaskAssigned(copy, system);
+      if (copy.assignee?.kind === "vendor") await notifyVendorJob(copy, system, "assigned");
     } catch (error) {
       if (!isDuplicateKeyError(error)) throw error;
     }

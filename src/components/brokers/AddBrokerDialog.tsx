@@ -40,14 +40,17 @@ interface Props {
 }
 
 interface Invite {
-  inviteUrl: string;
+  emailSent: boolean;
+  /** Only present when the email could not be sent. */
+  inviteUrl?: string;
   inviteExpiresAt: string;
   name: string;
 }
 
 /**
  * "Add broker": creates a verified broker account straight away (client
- * decision) and shows a set-password link to share with them.
+ * decision) and emails them a set-password link (shown here only if the
+ * email could not be sent).
  */
 export function AddBrokerDialog({ inviterRole, currentUserId, onAdded }: Props) {
   const [open, setOpen] = useState(false);
@@ -133,7 +136,7 @@ export function AddBrokerDialog({ inviterRole, currentUserId, onAdded }: Props) 
   };
 
   const copy = async () => {
-    if (!invite) return;
+    if (!invite?.inviteUrl) return;
     try {
       await navigator.clipboard.writeText(invite.inviteUrl);
       setCopied(true);
@@ -154,21 +157,24 @@ export function AddBrokerDialog({ inviterRole, currentUserId, onAdded }: Props) 
               <DialogHeader>
                 <DialogTitle>Broker added</DialogTitle>
                 <DialogDescription>
-                  Send {invite.name} this link to set their password. It works once and expires in
-                  24 hours; you can issue a new one from the broker list.
+                  {invite.emailSent
+                    ? `We emailed ${invite.name} a link to set their password. It works once and expires in 24 hours; you can re-send it from the broker list.`
+                    : `We could not email ${invite.name}. Send them this link to set their password. It works once and expires in 24 hours.`}
                 </DialogDescription>
               </DialogHeader>
-              <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value={invite.inviteUrl}
-                  aria-label="Set-password link"
-                  onFocus={(e) => e.target.select()}
-                />
-                <Button variant="outline" onClick={() => void copy()} aria-label="Copy link">
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                </Button>
-              </div>
+              {invite.inviteUrl && (
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    value={invite.inviteUrl}
+                    aria-label="Set-password link"
+                    onFocus={(e) => e.target.select()}
+                  />
+                  <Button variant="outline" onClick={() => void copy()} aria-label="Copy link">
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+              )}
               <DialogFooter>
                 <Button className="rounded-full" onClick={() => setOpen(false)}>
                   Done

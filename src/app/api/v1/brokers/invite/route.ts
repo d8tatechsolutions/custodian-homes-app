@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { writeAuditEvent } from "@/lib/audit";
-import { getAppUrl } from "@/lib/brand";
+import { BROKER_INVITE_TTL_MS, deliverBrokerInvite } from "@/lib/broker-invite";
 import { authorizeBroker, createCommissionAgreement } from "@/lib/brokers";
 import { encryptField } from "@/lib/crypto";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
@@ -18,8 +18,6 @@ import { resolveUserByContact } from "@/lib/user-identity";
 import { BrokerProfile } from "@/models/BrokerProfile";
 import { Property } from "@/models/Property";
 import { User } from "@/models/User";
-
-const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
 
 const inviteInput = z.object({
   name: z.string().trim().min(2, "Enter the broker's full name").max(120),
@@ -42,9 +40,8 @@ const inviteInput = z.object({
 /**
  * Adds a broker directly (system-admin and owners — client decisions). The
  * broker account is created verified and becomes usable once the broker opens
- * the set-password link. Until transactional email for this flow ships, the
- * link is returned for the inviter to share; it expires after 24 hours and
- * can be regenerated.
+ * the set-password link, which is emailed to them (24h, can be re-sent). The
+ * link is only returned to the inviter when the email could not be sent.
  *
  * An owner may also authorise the new broker on their own properties; the
  * commission terms become a DRAFT agreement the broker accepts on first login.
@@ -123,6 +120,7 @@ export async function POST(request: NextRequest) {
   }
 
   const verificationToken = crypto.randomUUID();
+  const inviteExpiresAt = new Date(Date.now() + BROKER_INVITE_TTL_MS);
   // Stored on the user too, so the invited broker's profile is complete and
   // the verify step lands them on their dashboard (brokers have no settings page).
   const encryptedNationalId = encryptField(normalizeNationalId(input.nationalId));
@@ -138,7 +136,7 @@ export async function POST(request: NextRequest) {
       isActive: false,
       isVerified: false,
       verificationToken,
-      verificationTokenExpiry: new Date(Date.now() + INVITE_TTL_MS),
+      verificationTokenExpiry: inviteExpiresAt,
       userCode,
     }),
   );
@@ -201,6 +199,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const delivery = await deliverBrokerInvite({
+    email: identity.email,
+    name: input.name,
+    token: verificationToken,
+    expiresAt: inviteExpiresAt,
+  });
+
   await writeAuditEvent({
     actor,
     action: "user.invited",
@@ -210,6 +215,7 @@ export async function POST(request: NextRequest) {
       role: "broker",
       addedVia: inviter.role === "system-admin" ? "system" : "admin",
       authorised,
+      emailSent: delivery.emailSent,
     },
     request: {
       ip: request.headers.get("x-forwarded-for"),
@@ -222,8 +228,7 @@ export async function POST(request: NextRequest) {
       data: {
         id: brokerId,
         name: user.name,
-        inviteUrl: `${getAppUrl()}/auth/verify?token=${verificationToken}&invited=1`,
-        inviteExpiresAt: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
+        ...delivery,
         authorisedPropertyIds: authorised,
       },
     },

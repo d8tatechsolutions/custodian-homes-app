@@ -4,8 +4,9 @@ import { NextResponse } from "next/server";
 import { readJsonBody, resolveDashboardActor } from "@/app/api/v1/_helpers";
 import { formatKES } from "@/lib/format";
 import { actorCanAccessTask } from "@/lib/maintenance/access";
-import { queueTaskNotice, recordTaskActivity } from "@/lib/maintenance/activity";
+import { recordTaskActivity } from "@/lib/maintenance/activity";
 import { resumeStatusAfterApproval } from "@/lib/maintenance/costs";
+import { type NoticeTask, notifyCostDecided, notifyVendorJob } from "@/lib/maintenance/notify";
 import {
   guardMutation,
   respondWithTask,
@@ -104,16 +105,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     `${approved ? "Approved" : "Rejected"} the ${formatKES(amount)} quote${parsed.data.note ? `: ${parsed.data.note}` : ""}`,
     { decision: parsed.data.decision, amount },
   );
-  await queueTaskNotice(
-    task,
-    who,
-    approved ? "Staff: cost approved — work can start" : "Staff: cost rejected — get a new quote",
-    [task.cost?.quote?.by ?? ""].filter(Boolean),
-  );
+  await notifyCostDecided(task as NoticeTask, who, approved, parsed.data.note ?? "");
   if (approved && task.assignee?.kind === "vendor") {
-    await queueTaskNotice(task, who, "Vendor: job details", [], {
-      vendorId: task.assignee.vendorId,
-    });
+    await notifyVendorJob(task as NoticeTask, who, "approved");
   }
   return respondWithTask(task._id);
 }

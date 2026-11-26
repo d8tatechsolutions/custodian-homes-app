@@ -37,17 +37,3 @@ export async function recordTaskActivity(
   }
 }
 
-/**
- * Records a notification the platform will send once the notification phase
- * ships (held until the email/notification work in progress is finished).
- * Kept in the task history so nothing is lost.
- */
-export async function queueTaskNotice(
-  task: { _id: unknown; ownerId: string },
-  actor: ActivityActor,
-  event: string,
-  recipients: string[],
-  data: Record<string, unknown> = {},
-): Promise<void> {
-  await recordTaskActivity(task, actor, "notify", event, { recipients, ...data });
-}

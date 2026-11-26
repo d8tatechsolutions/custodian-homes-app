@@ -11,6 +11,7 @@ import {
   submissionProblems,
   toPrivateBrokerListing,
 } from "@/lib/broker-listings";
+import { notifyBrokerListingSubmitted } from "@/lib/broker-notify";
 import { checkListingPhotos } from "@/lib/listing-fingerprint";
 import { BrokerListing } from "@/models/BrokerListing";
 import { ListingFlag } from "@/models/ListingFlag";
@@ -48,5 +49,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     { $set: { status: "submitted", submittedAt: new Date(), duplicateFlags, reviewNote: "" } },
   );
   const fresh = (await BrokerListing.findById(id).lean()) as BrokerListingDoc;
+  await notifyBrokerListingSubmitted(fresh);
   return NextResponse.json({ data: toPrivateBrokerListing(fresh) });
 }

@@ -1,3 +1,4 @@
+import { notifyListingFlagged } from "@/lib/broker-notify";
 import { ListingFlag } from "@/models/ListingFlag";
 import { MediaFingerprint } from "@/models/MediaFingerprint";
 
@@ -146,6 +147,7 @@ export async function checkListingPhotos(target: FingerprintTarget): Promise<num
         if (res.upsertedCount) flagged += 1;
       }
     }
+    if (flagged > 0) await notifyListingFlagged(target.listingId, flagged);
     return flagged;
   } catch (error) {
     console.error(
