@@ -25,6 +25,16 @@ const commissionPayoutSchema = new Schema(
     providerReference: { type: String, default: "", trim: true },
     failureReason: { type: String, default: "" },
     paidAt: { type: Date, default: null },
+    /**
+     * Conversion record when commission agreed in USD is paid in KES: the
+     * USD amount, the rate on payout day and its date (client decision).
+     */
+    fx: {
+      sourceCurrency: { type: String, default: "" },
+      sourceAmountMinor: { type: Number, default: 0 },
+      rate: { type: Number, default: 0 },
+      rateDate: { type: String, default: "" },
+    },
   },
   { timestamps: true },
 );
