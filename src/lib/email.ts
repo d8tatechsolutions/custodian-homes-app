@@ -1,7 +1,8 @@
-import { roleLabel as displayRole } from "@/lib/role-labels";
 import { isIP } from "node:net";
 import nodemailer from "nodemailer";
 import { BRAND, getAppUrl } from "@/lib/brand";
+import { maskEmail, maskEmailsInText } from "@/lib/mask-email";
+import { roleLabel as displayRole } from "@/lib/role-labels";
 import { formatKES, formatPeriod } from "./format";
 
 /**
@@ -139,13 +140,15 @@ export interface EmailOptions {
 
 function logEmailSendFailure(options: EmailOptions, error: unknown): void {
   const details: Record<string, string> = {
-    recipient: options.to,
+    recipient: maskEmail(options.to),
     subject: options.subject,
   };
   if (error && typeof error === "object") {
     const smtpError = error as { code?: unknown; response?: unknown; command?: unknown };
     if (typeof smtpError.code === "string") details.code = smtpError.code;
-    if (typeof smtpError.response === "string") details.response = smtpError.response;
+    if (typeof smtpError.response === "string") {
+      details.response = maskEmailsInText(smtpError.response);
+    }
     if (typeof smtpError.command === "string") details.command = smtpError.command;
   }
   console.error("[email] Send failed", details);
@@ -153,7 +156,10 @@ function logEmailSendFailure(options: EmailOptions, error: unknown): void {
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
   if (!isEmailConfigured()) {
-    console.warn("[email] Skipping send for %s because SMTP is not configured.", options.to);
+    console.warn(
+      "[email] Skipping send for %s because SMTP is not configured.",
+      maskEmail(options.to),
+    );
     return false;
   }
 

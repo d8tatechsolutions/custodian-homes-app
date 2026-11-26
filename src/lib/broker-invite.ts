@@ -1,5 +1,6 @@
 import { getAppUrl } from "@/lib/brand";
 import { sendInviteEmail } from "@/lib/email";
+import { maskEmailsInText } from "@/lib/mask-email";
 
 export const BROKER_INVITE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -24,7 +25,10 @@ export async function deliverBrokerInvite(input: {
   try {
     emailSent = await sendInviteEmail(input.email, input.name, "broker", input.token);
   } catch (error) {
-    console.error("[brokers] invite email failed", error instanceof Error ? error.message : error);
+    console.error(
+      "[brokers] invite email failed",
+      maskEmailsInText(error instanceof Error ? error.message : String(error)),
+    );
   }
   return {
     emailSent,

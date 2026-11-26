@@ -60,6 +60,33 @@ describe("/api/v1/listings/[id]", () => {
     property.findById.mockReturnValue(buildQuery({ ownerId: "" }));
   });
 
+  describe("invalid ids", () => {
+    it("rejects a malformed id with 400 on every method, without querying listings", async () => {
+      user.findById.mockReturnValue(buildQuery(makeUser({ _id: ADMIN_ID, role: "admin" })));
+      const params = { params: Promise.resolve({ id: "not-an-id" }) };
+      const token = signToken(ADMIN_ID);
+      const responses = [
+        await GET(buildRequest("/api/v1/listings/not-an-id", { token }), params),
+        await PATCH(
+          buildRequest("/api/v1/listings/not-an-id", {
+            method: "PATCH",
+            token,
+            body: { action: "pause" },
+          }),
+          { params: Promise.resolve({ id: "not-an-id" }) },
+        ),
+        await DELETE(buildRequest("/api/v1/listings/not-an-id", { method: "DELETE", token }), {
+          params: Promise.resolve({ id: "not-an-id" }),
+        }),
+      ];
+      for (const res of responses) {
+        expect(res.status).toBe(400);
+        expect((await json(res)).error).toBe("Invalid listing id");
+      }
+      expect(listing.findOne).not.toHaveBeenCalled();
+    });
+  });
+
   describe("GET", () => {
     it("returns 404 when listing not found", async () => {
       user.findById.mockReturnValue(buildQuery(makeUser({ _id: ADMIN_ID, role: "admin" })));

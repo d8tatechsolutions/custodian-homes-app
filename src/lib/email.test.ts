@@ -213,7 +213,7 @@ describe("Email templates and transport", () => {
 
     expect(result).toBe(false);
     expect(errorSpy).toHaveBeenCalledWith("[email] Send failed", {
-      recipient: "invitee@example.com",
+      recipient: "i***@e***.com",
       subject: "Invite",
       code: "EAUTH",
       response: "535 Authentication failed",
@@ -222,6 +222,7 @@ describe("Email templates and transport", () => {
     expect(logSpy).not.toHaveBeenCalled();
     const logged = JSON.stringify(errorSpy.mock.calls);
     expect(logged).not.toContain("secret-user@example.com");
+    expect(logged).not.toContain("invitee@example.com");
     expect(logged).not.toContain("supersecretpassword");
     expect(logged).not.toContain("supersecretpassword".slice(0, 3));
   });

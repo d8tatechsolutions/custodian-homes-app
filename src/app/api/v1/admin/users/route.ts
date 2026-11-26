@@ -5,6 +5,7 @@ import { z } from "zod";
 import { escapeRegex, requireRoleManagementActor } from "@/app/api/v1/admin/users/_guard";
 import { writeAuditEvent } from "@/lib/audit";
 import { sendInviteEmail } from "@/lib/email";
+import { maskEmail } from "@/lib/mask-email";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
 import type { Role } from "@/lib/permissions";
@@ -198,7 +199,7 @@ export async function POST(request: NextRequest) {
       if (!emailSent) {
         console.error("[invite] Invitation email could not be sent", {
           role,
-          recipient: email,
+          recipient: maskEmail(email),
         });
       }
     }
@@ -288,7 +289,10 @@ export async function POST(request: NextRequest) {
   if (email) {
     emailSent = await sendInviteEmail(email, created.name, role, verificationToken);
     if (!emailSent) {
-      console.error("[invite] Invitation email could not be sent", { role, recipient: email });
+      console.error("[invite] Invitation email could not be sent", {
+        role,
+        recipient: maskEmail(email),
+      });
     }
   }
 

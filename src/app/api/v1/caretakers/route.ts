@@ -6,6 +6,7 @@ import { z } from "zod";
 import { writeAuditEvent } from "@/lib/audit";
 import { sendInviteEmail } from "@/lib/email";
 import { getManagedOwnerId, getStaffIdsForOwner } from "@/lib/managed-owner";
+import { maskEmail } from "@/lib/mask-email";
 import { connectToDatabase } from "@/lib/mongoose";
 import { authenticate, CARETAKER_PRIVILEGES, getAdminAssignmentScope } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
@@ -90,9 +91,7 @@ export async function GET(request: NextRequest) {
   }
 
   const caretakers = await User.find(filter)
-    .select(
-      forPropertyAssignment ? "name" : "name email phone privileges userCode staffTitle",
-    )
+    .select(forPropertyAssignment ? "name" : "name email phone privileges userCode staffTitle")
     .sort({ name: 1 })
     .lean();
 
@@ -288,7 +287,7 @@ export async function POST(request: NextRequest) {
     if (!emailSent) {
       console.error("[invite] Invitation email could not be sent", {
         role: "caretaker",
-        recipient: email,
+        recipient: maskEmail(email),
       });
     }
     await audit("caretaker.invited", String(existing._id), {
@@ -372,7 +371,7 @@ export async function POST(request: NextRequest) {
   if (!emailSent) {
     console.error("[invite] Invitation email could not be sent", {
       role: "caretaker",
-      recipient: email,
+      recipient: maskEmail(email),
     });
   }
   await audit("caretaker.invited", String(created._id), {

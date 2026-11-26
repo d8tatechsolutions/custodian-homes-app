@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { writeAuditEvent } from "@/lib/audit";
 import { sendInviteEmail } from "@/lib/email";
+import { maskEmail } from "@/lib/mask-email";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
 import { getTenantScope, requirePermission } from "@/lib/permissions";
@@ -337,7 +338,7 @@ export async function POST(request: NextRequest) {
       if (!inviteEmailSent) {
         console.error("[invite] Invitation email could not be sent", {
           role: "tenant",
-          recipient: email,
+          recipient: maskEmail(email),
         });
       }
     }
@@ -401,7 +402,7 @@ export async function POST(request: NextRequest) {
     if (!inviteEmailSent) {
       console.error("[invite] Invitation email could not be sent", {
         role: "tenant",
-        recipient: email,
+        recipient: maskEmail(email),
       });
     }
   }

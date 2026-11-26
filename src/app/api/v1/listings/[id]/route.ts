@@ -1,3 +1,4 @@
+import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { writeAuditEvent } from "@/lib/audit";
@@ -8,6 +9,7 @@ import {
 } from "@/lib/billing-accounts";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { checkListingPhotos } from "@/lib/listing-fingerprint";
+import { isUploadedMediaList, LISTING_MEDIA_ERROR } from "@/lib/listing-media";
 import { transitionListingState, validateListingPublish } from "@/lib/listings";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
@@ -76,6 +78,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   }
 
   const { id } = await context.params;
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid listing id" }, { status: 400 });
+  }
   const listing = await Listing.findOne({ _id: id, deletedAt: null }).lean();
   if (!listing) {
     return NextResponse.json({ error: "Listing not found" }, { status: 404 });
@@ -116,6 +121,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 
   const { id } = await context.params;
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid listing id" }, { status: 400 });
+  }
   const listing = await Listing.findOne({ _id: id, deletedAt: null }).lean();
   if (!listing) {
     return NextResponse.json({ error: "Listing not found" }, { status: 404 });
@@ -126,7 +134,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
   const { action, reason } = body;
   const userId = String(user._id);
 
@@ -254,6 +265,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     return NextResponse.json({ error: "No updatable fields provided" }, { status: 400 });
   }
 
+  if ("media" in updates && !isUploadedMediaList(updates.media)) {
+    return NextResponse.json({ error: LISTING_MEDIA_ERROR }, { status: 400 });
+  }
+
   const updatedListing = await Listing.findOneAndUpdate(
     { _id: id, version: listing.version },
     {
@@ -315,6 +330,9 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   }
 
   const { id } = await context.params;
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid listing id" }, { status: 400 });
+  }
   const listing = await Listing.findOne({ _id: id, deletedAt: null }).lean();
   if (!listing) {
     return NextResponse.json({ error: "Listing not found" }, { status: 404 });

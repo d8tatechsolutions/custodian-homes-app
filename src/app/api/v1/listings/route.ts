@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { checkListingPhotos } from "@/lib/listing-fingerprint";
+import { isUploadedMediaList, LISTING_MEDIA_ERROR } from "@/lib/listing-media";
 import { generateListingShareCode } from "@/lib/listings";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
@@ -131,7 +132,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
   const {
     propertyId,
     blockId,
@@ -147,6 +151,10 @@ export async function POST(request: NextRequest) {
     media,
     visibility,
   } = body;
+
+  if (media !== undefined && !isUploadedMediaList(media)) {
+    return NextResponse.json({ error: LISTING_MEDIA_ERROR }, { status: 400 });
+  }
 
   if (!propertyId || !unitId || !headline || askingRent === undefined) {
     return NextResponse.json(
