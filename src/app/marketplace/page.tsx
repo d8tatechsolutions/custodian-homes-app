@@ -4,6 +4,9 @@ import { Bath, BedDouble, MapPin, Search, SlidersHorizontal, Sparkles } from "lu
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ListingSourceLabel } from "@/components/brokers/ListingSourceLabel";
+import { MarketplaceBrokerListings } from "@/components/brokers/MarketplaceBrokerListings";
+import { UsdHint } from "@/components/money/Money";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -178,6 +181,10 @@ export default function MarketplacePage() {
                         <MapPin className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{item.property.location}</span>
                       </div>
+                      <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                        <UsdHint amount={item.askingRent} />
+                        <ListingSourceLabel />
+                      </div>
 
                       <div className="mt-4 flex items-center gap-4 border-t border-border pt-4 text-xs text-muted-foreground">
                         <div className="flex items-center gap-1">
@@ -201,6 +208,7 @@ export default function MarketplacePage() {
             })}
           </div>
         )}
+        <MarketplaceBrokerListings county={county} maxPrice={maxRent} search={search} />
       </main>
     </div>
   );

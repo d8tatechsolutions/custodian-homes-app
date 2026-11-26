@@ -83,3 +83,17 @@ export function FxAttribution({ className }: { className?: string }) {
     </p>
   );
 }
+
+/**
+ * Just the "≈ $100.00" line, for places that already print the KES amount.
+ * Renders nothing while USD display is off or no rate is available.
+ */
+export function UsdHint({ amount, className }: { amount: number; className?: string }) {
+  const { flags } = useReleaseFlags();
+  const { quote } = useFxRate(flags.fxDisplay);
+  if (!flags.fxDisplay || !quote) return null;
+  const { secondary } = formatDual(amount, "KES", quote.rate);
+  return secondary ? (
+    <span className={cn("text-xs text-muted-foreground", className)}>{secondary}</span>
+  ) : null;
+}

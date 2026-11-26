@@ -15,6 +15,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ListingSourceLabel } from "@/components/brokers/ListingSourceLabel";
+import { UsdHint } from "@/components/money/Money";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,6 +49,12 @@ export default function ListingDetailPage() {
   const router = useRouter();
 
   const touchTokenKey = listing ? `attribution-touch:${listing.id}` : "";
+  // Broker share links carry a `brk_` code (in the path or as ?ref=).
+  const [sharedByBroker, setSharedByBroker] = useState(false);
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref") ?? "";
+    setSharedByBroker(String(id ?? "").startsWith("brk_") || ref.startsWith("brk_"));
+  }, [id]);
 
   useEffect(() => {
     if (!listing) return;
@@ -345,6 +353,8 @@ export default function ListingDetailPage() {
                 </span>
                 <span className="text-sm text-muted-foreground">/ month</span>
               </div>
+              <UsdHint amount={listing.askingRent} />
+              <ListingSourceLabel broker={sharedByBroker} className="mt-2 block" />
 
               <div className="mt-6 space-y-3 border-t border-border pt-4 text-sm">
                 <div className="flex justify-between text-muted-foreground">

@@ -227,6 +227,13 @@ export const systemAdminNav: DashNavItem[] = [
     icon: Calculator,
     group: "administration",
   },
+  {
+    to: "/dashboard/system-admin/marketplace",
+    label: "Brokers & Listings",
+    icon: Shield,
+    group: "administration",
+    releaseFlag: "brokerBids",
+  },
 ];
 
 interface TenantSection {
