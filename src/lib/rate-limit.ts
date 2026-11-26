@@ -62,10 +62,24 @@ export function rateLimitHeaders(response: NextResponse, remaining: number, rese
   return response;
 }
 
+/** The address this request was served on (a Vercel preview, www or the bare domain). */
+function servedOrigin(request: NextRequest): string | null {
+  try {
+    return request.nextUrl.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rejects cross-site writes. A request passes when its Origin is the configured app
+ * address or the address it was served on. A hostile page can't pass either test:
+ * the browser always sends that page's own origin.
+ */
 export function checkSameOrigin(request: NextRequest): NextResponse | null {
   const origin = request.headers.get("origin")?.replace(/\/+$/, "");
   const appOrigin = getAppUrl();
-  if (origin && origin !== appOrigin) {
+  if (origin && origin !== appOrigin && origin !== servedOrigin(request)) {
     return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
   }
   const secFetchSite = request.headers.get("sec-fetch-site");
