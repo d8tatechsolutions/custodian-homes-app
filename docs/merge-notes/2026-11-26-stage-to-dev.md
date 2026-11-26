@@ -33,6 +33,23 @@ Things that are **not** behind a flag (they're safe as they are):
   - Brokers' payout data and national ID are no longer returned to owners.
   - `caretakerIds` are no longer returned by the public property list.
   - Bid offers no longer include internal account ids.
+  - Recipient addresses in email-failure logs are masked (`j***@e***.com`), including
+    addresses inside SMTP error replies (`lib/mask-email.ts`).
+  - Listing create/update:
+    - A malformed id is a 400 (was a 500).
+    - A bad JSON body is a 400.
+    - Listing photos must be files uploaded through the app, so public pages never load
+      outside image links.
+- **Same-origin check (`checkSameOrigin` in `lib/rate-limit.ts`):**
+  - It now also accepts the address the request was served on.
+  - Before, it compared only with `NEXT_PUBLIC_APP_URL`, which is set for Production only. So
+    every protected write failed with "Invalid origin" on Vercel Previews, and on the bare
+    domain without `www`.
+  - Cross-site requests are still refused.
+- **Dependencies:**
+  - `next` 16.3.8 → 16.4.6 (critical and high advisories, same major version).
+  - `overrides.effect = 3.22.4`. UploadThing uses this package. This fixes its high advisories
+    within effect 3.x, which UploadThing's own version range allows.
 - **Daily job:** `vercel.json` schedules `GET /api/v1/cron/daily` at 03:00 UTC, protected by
   `CRON_SECRET`. Its steps: FX refresh, recurring tasks, task reminders, bid expiry and listing
   expiry. Steps for a feature skip themselves while that feature's flag is off.
@@ -60,12 +77,16 @@ Changes are additive wherever possible. The main ones:
 - **Admin pages:** `roleName="Owner"`.
 - **`proxy.ts`:** bot guard added before your existing logic.
 
-## Things worth a look in your code (not changed)
+## Fixed in your code (on stage, with tests)
 
-- `logEmailSendFailure` in `lib/email.ts` logs the recipient's email address to the server
-  logs. Consider masking it.
-- `api/v1/listings/[id]` does not validate the id. An invalid id becomes a 500, not a 400.
-  This is not a leak.
+- **Server logs:** these wrote full recipient addresses to the logs. They are masked now:
+  - `logEmailSendFailure` and the "SMTP not configured" warning in `lib/email.ts`.
+  - The invite-failure logs in the admin users, caretakers, custodians and tenants routes.
+- **`api/v1/listings/[id]` and `api/v1/listings`:** id, body and photo validation (see above).
+- **`checkSameOrigin`:** Preview and bare-domain writes (see above).
+
+## Still open
+
 - UploadThing has no patched 7.x release for the current advisory, and private files need a
   paid plan. Task photos and receipts rely on unguessable links that are only returned to
   people allowed to see the task.
