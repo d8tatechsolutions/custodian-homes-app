@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MaintenanceTask } from "@/types/maintenance";
@@ -92,6 +92,26 @@ describe("TaskListView", () => {
     expect(links[0]).toHaveTextContent("Fix the gate");
     expect(links[0]).toHaveAttribute("href", "/dashboard/admin/tasks/b");
     expect(within(table).getAllByText("Overdue").length).toBeGreaterThan(0);
+  });
+
+  it("moves a card by dragging it onto an allowed board column", async () => {
+    mockApi({
+      "/api/v1/tasks?": [task({ _id: "a", title: "Fix the gate" })],
+      "/api/v1/task-categories": [],
+    });
+    render(<TaskListView viewerRole="admin" currentUserId="admin-1" basePath="/x" />);
+    await screen.findByRole("table");
+    await userEvent.click(screen.getByRole("button", { name: "Board" }));
+    const card = (await screen.findByRole("link", { name: "Fix the gate" })).closest("li");
+    if (!card) throw new Error("card not found");
+    expect(card).toHaveAttribute("draggable", "true");
+
+    const dataTransfer = { setData: vi.fn(), effectAllowed: "" };
+    fireEvent.dragStart(card, { dataTransfer });
+    const inProgress = screen.getByRole("region", { name: "In progress" });
+    fireEvent.dragOver(inProgress, { dataTransfer });
+    fireEvent.drop(inProgress, { dataTransfer });
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
   it("shows the empty state when there is nothing yet", async () => {
@@ -200,7 +220,14 @@ describe("TasksHub", () => {
   it("shows admin-only tabs to admins and hides them from caretakers", async () => {
     mockApi({ "/api/v1/tasks": [], "/api/v1/task-categories": [] });
     const { unmount } = render(<TasksHub viewerRole="admin" basePath="/dashboard/admin/tasks" />);
-    for (const name of ["Tasks", "Complaints", "Approvals", "Recurring", "Service providers", "Settings"]) {
+    for (const name of [
+      "Tasks",
+      "Complaints",
+      "Approvals",
+      "Recurring",
+      "Service providers",
+      "Settings",
+    ]) {
       expect(screen.getByRole("tab", { name: new RegExp(`^${name}`) })).toBeInTheDocument();
     }
     unmount();

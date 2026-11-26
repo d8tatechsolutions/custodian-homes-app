@@ -82,6 +82,9 @@ export function TaskListView({
   const [view, setView] = useState<View>("list");
   const [formOpen, setFormOpen] = useState(false);
   const [moving, setMoving] = useState<{ task: MaintenanceTask; to: TaskStatusV2 } | null>(null);
+  // Board drag & drop (desktop); the "Move to…" menu stays for touch and keyboard.
+  const [dragging, setDragging] = useState<MaintenanceTask | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   const { tasks, loading, error, refetch, setTasks } = useMaintenanceTasks();
   const { properties } = useProperties();
@@ -196,11 +199,17 @@ export function TaskListView({
     },
   ];
 
+  const movesFor = (t: MaintenanceTask): readonly TaskStatusV2[] =>
+    t.status === "cancelled" && role !== "admin" && role !== "system-admin"
+      ? []
+      : allowedNextStatuses(t.status);
+
+  /** The status a card dropped on a column moves to (first allowed one), if any. */
+  const dropStatus = (t: MaintenanceTask, statuses: TaskStatusV2[]): TaskStatusV2 | null =>
+    statuses.find((s) => movesFor(t).includes(s)) ?? null;
+
   const moveMenu = (t: MaintenanceTask) => {
-    const options =
-      t.status === "cancelled" && role !== "admin" && role !== "system-admin"
-        ? []
-        : allowedNextStatuses(t.status);
+    const options = movesFor(t);
     if (options.length === 0) return null;
     return (
       <Select value="" onValueChange={(to) => setMoving({ task: t, to: to as TaskStatusV2 })}>
@@ -347,11 +356,30 @@ export function TaskListView({
         <div className="grid gap-4 lg:grid-cols-4">
           {BOARD_COLUMNS.map((column) => {
             const cards = visible.filter((t) => column.statuses.includes(t.status));
+            const target = dragging ? dropStatus(dragging, column.statuses) : null;
             return (
               <section
                 key={column.key}
                 aria-label={column.title}
-                className="rounded-2xl bg-muted/40 p-3"
+                className={`rounded-2xl bg-muted/40 p-3 transition-shadow ${
+                  dragging && target
+                    ? dropTarget === column.key
+                      ? "ring-2 ring-primary"
+                      : "ring-1 ring-primary/30"
+                    : ""
+                }`}
+                onDragOver={(e) => {
+                  if (!target) return;
+                  e.preventDefault();
+                  setDropTarget(column.key);
+                }}
+                onDragLeave={() => setDropTarget((k) => (k === column.key ? null : k))}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragging && target) setMoving({ task: dragging, to: target });
+                  setDragging(null);
+                  setDropTarget(null);
+                }}
               >
                 <h3 className="mb-3 flex items-center justify-between px-1 text-sm font-semibold">
                   {column.title}
@@ -363,7 +391,19 @@ export function TaskListView({
                   {cards.map((t) => (
                     <li
                       key={t._id}
-                      className="rounded-xl border border-border bg-card p-3 shadow-soft"
+                      draggable={movesFor(t).length > 0}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", t._id);
+                        setDragging(t);
+                      }}
+                      onDragEnd={() => {
+                        setDragging(null);
+                        setDropTarget(null);
+                      }}
+                      className={`rounded-xl border border-border bg-card p-3 shadow-soft ${
+                        movesFor(t).length > 0 ? "cursor-grab active:cursor-grabbing" : ""
+                      } ${dragging?._id === t._id ? "opacity-50" : ""}`}
                     >
                       <Link
                         href={`${basePath}/${t._id}`}
