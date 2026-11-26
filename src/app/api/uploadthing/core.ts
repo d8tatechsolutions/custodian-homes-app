@@ -1,6 +1,6 @@
 import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
-import { isTasksV2Enabled } from "@/lib/feature-flags";
+import { isBrokerBidsEnabled, isTasksV2Enabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
 import { authenticate } from "@/lib/permissions";
 import { User } from "@/models/User";
@@ -60,6 +60,27 @@ export const ourFileRouter = {
       if (!user?.isActive || !TASK_UPLOAD_ROLES.has(String(user.role))) {
         throw new UploadThingError("Unauthorized");
       }
+      return { uploadedBy: auth.userId };
+    })
+    .onUploadComplete(async ({ file, metadata }) => ({
+      uploadedBy: metadata.uploadedBy,
+      ufsUrl: file.ufsUrl,
+      key: file.key,
+      name: file.name,
+    })),
+
+  /** Photos and the owner's mandate letter for a broker's own listing. Brokers only, flag-gated. */
+  brokerListingMedia: f({
+    image: { maxFileSize: "4MB", maxFileCount: 10 },
+    pdf: { maxFileSize: "8MB", maxFileCount: 1 },
+  })
+    .middleware(async ({ req }) => {
+      if (!isBrokerBidsEnabled()) throw new UploadThingError("Not available");
+      const auth = authenticate(req);
+      if (!auth) throw new UploadThingError("Unauthorized");
+      await connectToDatabase();
+      const user = await User.findById(auth.userId).select("isActive role").lean();
+      if (!user?.isActive || user.role !== "broker") throw new UploadThingError("Unauthorized");
       return { uploadedBy: auth.userId };
     })
     .onUploadComplete(async ({ file, metadata }) => ({
