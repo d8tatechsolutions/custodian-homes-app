@@ -30,6 +30,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { type PropertyUnit, useProperty } from "@/hooks/use-properties";
 import { useToast } from "@/hooks/use-toast";
 import { formatKES } from "@/lib/format";
+import { isOptimizableImage } from "@/lib/image-hosts";
 import { applicationFormSchema } from "@/lib/schemas/application";
 
 const PropertyDetails = () => {
@@ -184,7 +185,7 @@ const PropertyDetails = () => {
       ? applications.some((a) => a.propertyId === property._id && a.status === "pending")
       : false;
 
-  const gallery = property.images.length > 0 ? property.images : ["/images/property-1.jpg"];
+  const gallery = property.images?.length ? property.images : ["/images/property-1.jpg"];
   const safeActive = Math.min(active, gallery.length - 1);
 
   const handleApply = async (e: React.FormEvent) => {
@@ -279,6 +280,7 @@ const PropertyDetails = () => {
               <div className="aspect-[16/10] bg-muted relative">
                 <Image
                   src={gallery[safeActive]}
+                  unoptimized={!isOptimizableImage(gallery[safeActive])}
                   alt={property.title}
                   fill
                   sizes="(max-width: 1024px) 100vw, 66vw"
@@ -305,7 +307,13 @@ const PropertyDetails = () => {
                     }`}
                   >
                     <div className="aspect-[4/3] relative">
-                      <Image src={img} alt="" fill className="object-cover" />
+                      <Image
+                        src={img}
+                        unoptimized={!isOptimizableImage(img)}
+                        alt=""
+                        fill
+                        className="object-cover"
+                      />
                     </div>
                   </button>
                 ))}

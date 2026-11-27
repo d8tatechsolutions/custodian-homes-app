@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { isOptimizableImage } from "@/lib/image-hosts";
 import type { PublicListingProjection } from "@/lib/listings";
 
 export default function MarketplacePage() {
@@ -156,6 +157,7 @@ export default function MarketplacePage() {
                     <div className="relative aspect-[16/10] w-full overflow-hidden bg-muted">
                       <Image
                         src={primaryImage}
+                        unoptimized={!isOptimizableImage(primaryImage)}
                         alt={item.headline}
                         fill
                         className="object-cover transition-transform duration-500 group-hover:scale-105"

@@ -47,7 +47,7 @@ export const PropertyCardWithActions = ({
           location: property.location,
           price: property.price,
           description: property.description,
-          images: property.images.length > 0 ? property.images : ["/images/property-1.jpg"],
+          images: property.images?.length ? property.images : ["/images/property-1.jpg"],
           amenities: property.amenities,
           status: property.status,
           published: property.published,

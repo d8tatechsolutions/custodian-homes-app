@@ -20,6 +20,7 @@ import { Slider } from "@/components/ui/slider";
 import type { Property } from "@/data/properties";
 import { useProperties } from "@/hooks/use-properties";
 import { usePropertyTypes } from "@/hooks/use-property-types";
+import { isOptimizableImage } from "@/lib/image-hosts";
 import type { PublicListingProjection } from "@/lib/listings";
 
 const UNITS_LIMIT = 20;
@@ -351,6 +352,7 @@ const Properties = () => {
                           <div className="relative aspect-[16/10] w-full overflow-hidden bg-muted">
                             <Image
                               src={primaryImage}
+                              unoptimized={!isOptimizableImage(primaryImage)}
                               alt={item.headline}
                               fill
                               className="object-cover transition-transform duration-500 group-hover:scale-105"
