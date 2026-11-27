@@ -1,5 +1,10 @@
 import { type FxQuote, isPlausibleKesRate } from "@/lib/fx-math";
+import { cached, invalidateCached } from "@/lib/memory-cache";
 import { FxRate } from "@/models/FxRate";
+
+/** The stored rate changes once a day; keep the newest row in memory briefly. */
+const LATEST_RATE_CACHE_MS = 5 * 60_000;
+const LATEST_RATE_KEY = "fx:usd-kes:latest";
 
 /**
  * Server-side USD/KES rate service.
@@ -79,13 +84,19 @@ export async function refreshUsdKesRate(now = new Date()): Promise<FxQuote | nul
     { $set: { rate, source: FX_SOURCE, fetchedAt: now } },
     { upsert: true },
   );
+  invalidateCached(LATEST_RATE_KEY);
   return { rate, effectiveDate, source: FX_SOURCE, stale: false };
 }
 
 async function latestStored(): Promise<StoredRate | null> {
-  return (await FxRate.findOne({ base: "USD", quote: "KES" })
-    .sort({ effectiveDate: -1, fetchedAt: -1 })
-    .lean()) as StoredRate | null;
+  return cached(
+    LATEST_RATE_KEY,
+    LATEST_RATE_CACHE_MS,
+    async () =>
+      (await FxRate.findOne({ base: "USD", quote: "KES" })
+        .sort({ effectiveDate: -1, fetchedAt: -1 })
+        .lean()) as StoredRate | null,
+  );
 }
 
 /** Current USD/KES rate: cached when fresh, refreshed when stale, last-known on outage. */

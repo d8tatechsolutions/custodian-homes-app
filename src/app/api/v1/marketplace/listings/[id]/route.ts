@@ -1,6 +1,7 @@
 import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { PUBLIC_EDGE_CACHE } from "@/lib/edge-cache";
 import { toPublicListingProjection } from "@/lib/listings";
 import { connectToDatabase } from "@/lib/mongoose";
 import { Listing } from "@/models/Listing";
@@ -24,7 +25,10 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 
   // Neither a share code nor a listing id: the same "not found" as a missing listing.
   if (!isValidObjectId(resolvedListingId)) {
-    return NextResponse.json({ error: "Listing not found or no longer available" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Listing not found or no longer available" },
+      { status: 404 },
+    );
   }
 
   const listing = await Listing.findOne({
@@ -65,5 +69,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 
   const projection = toPublicListingProjection(listing as any, property, unit, matchedPublisher);
 
-  return NextResponse.json({ listing: projection });
+  return NextResponse.json(
+    { listing: projection },
+    { headers: { "Cache-Control": PUBLIC_EDGE_CACHE } },
+  );
 }

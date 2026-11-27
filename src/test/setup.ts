@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+import { clearMemoryCache } from "@/lib/memory-cache";
 
 // jsdom does not implement the Pointer Capture / scrollIntoView APIs, which
 // Radix Select needs. Without these no-op stubs, opening a Select in tests
@@ -31,6 +32,8 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 
 afterEach(() => {
   cleanup();
+  // Server-side caches must not leak values between tests.
+  clearMemoryCache();
 });
 
 vi.mock("next/navigation", () => ({

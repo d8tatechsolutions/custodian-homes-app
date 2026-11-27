@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { PUBLIC_EDGE_CACHE } from "@/lib/edge-cache";
 import { toPublicListingProjection } from "@/lib/listings";
 import { connectToDatabase } from "@/lib/mongoose";
 import { parsePagination } from "@/lib/pagination";
@@ -31,11 +32,18 @@ export async function GET(request: NextRequest) {
   });
   const skip = (page - 1) * limit;
 
-  const search =
-    request.nextUrl.searchParams.get("search") || request.nextUrl.searchParams.get("q");
-  const county =
-    request.nextUrl.searchParams.get("county") || request.nextUrl.searchParams.get("location");
-  const propertyType = request.nextUrl.searchParams.get("propertyType");
+  // Free-text filters are capped at 100 characters (public endpoint).
+  const search = (
+    request.nextUrl.searchParams.get("search") ||
+    request.nextUrl.searchParams.get("q") ||
+    ""
+  ).slice(0, 100);
+  const county = (
+    request.nextUrl.searchParams.get("county") ||
+    request.nextUrl.searchParams.get("location") ||
+    ""
+  ).slice(0, 100);
+  const propertyType = (request.nextUrl.searchParams.get("propertyType") ?? "").slice(0, 100);
   const minRent = request.nextUrl.searchParams.get("minRent");
   const maxRent = request.nextUrl.searchParams.get("maxRent");
   const beds = request.nextUrl.searchParams.get("beds");
@@ -128,11 +136,14 @@ export async function GET(request: NextRequest) {
 
   const totalPages = Math.ceil(total / limit);
 
-  return NextResponse.json({
-    listings: projected,
-    total,
-    page,
-    limit,
-    totalPages,
-  });
+  return NextResponse.json(
+    {
+      listings: projected,
+      total,
+      page,
+      limit,
+      totalPages,
+    },
+    { headers: { "Cache-Control": PUBLIC_EDGE_CACHE } },
+  );
 }

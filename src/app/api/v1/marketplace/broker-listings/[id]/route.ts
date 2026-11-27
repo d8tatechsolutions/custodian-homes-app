@@ -2,6 +2,7 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { type BrokerListingDoc, isLive, toPublicBrokerListing } from "@/lib/broker-listings";
+import { PUBLIC_EDGE_CACHE } from "@/lib/edge-cache";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
 import { rateLimit } from "@/lib/rate-limit";
@@ -23,5 +24,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     .lean()) as {
     agencyName?: string;
   } | null;
-  return NextResponse.json({ data: toPublicBrokerListing(doc, { agency: profile?.agencyName }) });
+  return NextResponse.json(
+    { data: toPublicBrokerListing(doc, { agency: profile?.agencyName }) },
+    { headers: { "Cache-Control": PUBLIC_EDGE_CACHE } },
+  );
 }
