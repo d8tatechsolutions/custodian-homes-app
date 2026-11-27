@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { getAppUrl } from "@/lib/brand";
 import { encryptField } from "@/lib/crypto";
 import { isEmailConfigured, sendPasswordResetEmail, sendVerificationEmail } from "@/lib/email";
@@ -84,6 +85,11 @@ function duplicatePhoneResponse() {
   );
 }
 
+/** A verification or reset token as it arrives from a link: plain text, never a query object. */
+function isLinkToken(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 200;
+}
+
 async function generateVerificationToken(): Promise<string> {
   return crypto.randomUUID();
 }
@@ -124,7 +130,10 @@ function issueSession(
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const raw = await readJsonBody(request);
+    // Malformed JSON or a non-object body is treated as empty (a clear 400 below).
+    const body: Record<string, unknown> =
+      raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
     const { action } = body;
 
     const limitConfig = AUTH_RATE_LIMITS[action as string] ?? DEFAULT_AUTH_RATE_LIMIT;
@@ -328,7 +337,8 @@ export async function POST(request: Request) {
 
     if (action === "verify-email") {
       const { token } = body;
-      if (!token) {
+      // Text only: an object such as {"$ne": null} would match someone else's pending link.
+      if (!isLinkToken(token)) {
         return NextResponse.json({ error: "Verification token required" }, { status: 400 });
       }
 
@@ -476,7 +486,8 @@ export async function POST(request: Request) {
 
     if (action === "reset-password") {
       const { token, password } = body;
-      if (!token || !password) {
+      // Text only: an object such as {"$ne": null} would match someone else's pending link.
+      if (!isLinkToken(token) || typeof password !== "string" || !password) {
         return NextResponse.json({ error: "Token and new password required" }, { status: 400 });
       }
       if (password.length < 8) {
@@ -498,6 +509,8 @@ export async function POST(request: Request) {
       user.passwordHash = await bcrypt.hash(password, 12);
       user.verificationToken = undefined;
       user.verificationTokenExpiry = undefined;
+      // A reset signs the account out everywhere: sessions opened before it stop working.
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
       await user.save();
 
       return NextResponse.json({ message: "Password reset successfully. You can now sign in." });

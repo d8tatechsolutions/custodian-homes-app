@@ -14,6 +14,15 @@ const {
   assignBillingAccountToUnitMock: vi.fn(),
 }));
 
+// These route tests stub the database per test. authenticateSession also checks the
+// account is active and the token is not revoked (covered in auth-scope.test.ts);
+// here it reads the token only, as the routes did before that check existed.
+vi.mock("@/lib/auth-scope", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth-scope")>();
+  const { authenticate } = await import("@/lib/permissions");
+  return { ...actual, authenticateSession: async (request: Request) => authenticate(request) };
+});
+
 vi.mock("@/lib/mongoose", () => ({
   connectToDatabase: vi.fn().mockResolvedValue(undefined),
 }));

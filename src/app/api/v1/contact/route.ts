@@ -1,15 +1,16 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/app/api/v1/_helpers";
+import { authenticateSession } from "@/lib/auth-scope";
 import { durableRateLimit } from "@/lib/durable-rate-limit";
 import { sendContactMessage } from "@/lib/email";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { contactInput } from "@/lib/schemas/contact";
 import { ContactMessage } from "@/models/ContactMessage";
 
 export async function GET(request: NextRequest) {
-  const user = authenticate(request);
+  const user = await authenticateSession(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (user.role !== "admin" && user.role !== "system-admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await readJsonBody(request);
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }

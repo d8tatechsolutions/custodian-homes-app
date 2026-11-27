@@ -1,9 +1,10 @@
+import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { authenticateSession } from "@/lib/auth-scope";
 import { terminateCommissionAgreement } from "@/lib/brokers";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { User } from "@/models/User";
 
 const terminateSchema = z.object({
@@ -11,7 +12,7 @@ const terminateSchema = z.object({
 });
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -23,6 +24,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const { id } = await params;
+
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
 
   try {
     const body = await request.json().catch(() => ({}));

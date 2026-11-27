@@ -2,6 +2,7 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { normalizeAmenities } from "@/lib/amenities";
 import { PROPERTY_PURPOSES } from "@/lib/domain-enums";
 import { getPropertyStaffIds } from "@/lib/managed-owner";
@@ -132,7 +133,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   });
   if (authError) return authError;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = propertyUpdate.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

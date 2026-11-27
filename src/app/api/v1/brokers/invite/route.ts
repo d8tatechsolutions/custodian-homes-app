@@ -4,12 +4,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { writeAuditEvent } from "@/lib/audit";
+import { authenticateSession } from "@/lib/auth-scope";
 import { BROKER_INVITE_TTL_MS, deliverBrokerInvite } from "@/lib/broker-invite";
 import { authorizeBroker, createCommissionAgreement } from "@/lib/brokers";
 import { encryptField } from "@/lib/crypto";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate, type Role } from "@/lib/permissions";
+import type { Role } from "@/lib/permissions";
 import { normalizeNationalId } from "@/lib/phone";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { bidTermsInput, toBidTerms } from "@/lib/schemas/broker-bids";
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
   if (originError) return originError;
 
   await connectToDatabase();
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const inviter = (await User.findById(auth.userId).select("role isActive").lean()) as {
     role?: Role;

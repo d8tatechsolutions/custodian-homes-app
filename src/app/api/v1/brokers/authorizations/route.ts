@@ -1,10 +1,11 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
+import { authenticateSession } from "@/lib/auth-scope";
 import { authorizeBroker, listBrokerAuthorizations } from "@/lib/brokers";
 import { BROKER_SCOPE_TYPES } from "@/lib/domain-enums";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { User } from "@/models/User";
 
 const authorizeSchema = z.object({
@@ -17,7 +18,7 @@ const authorizeSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const parsed = authorizeSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

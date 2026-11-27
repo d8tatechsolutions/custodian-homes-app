@@ -224,3 +224,17 @@ export async function deriveManagedOwnerId(assignments: AssignmentLike[]): Promi
   );
   return [...owners][0] ?? "";
 }
+
+/**
+ * The signed-in user, only while the session is still valid: the account exists
+ * and is active, and the token has not been revoked (sign-out everywhere, a role
+ * change or deactivation bump `tokenVersion`). Use this instead of the bare
+ * `authenticate()` so a revoked token stops working at once, as it does for
+ * routes behind `requirePermission`. The role comes from the account, not the token.
+ */
+export async function authenticateSession(request: NextRequest): Promise<AuthUser | null> {
+  const ctx = await resolveRequestContext(request);
+  if (!ctx.auth || !ctx.user?.isActive) return null;
+  if ((ctx.user.tokenVersion ?? 0) !== (ctx.auth.tokenVersion ?? 0)) return null;
+  return { ...ctx.auth, role: ctx.user.role };
+}

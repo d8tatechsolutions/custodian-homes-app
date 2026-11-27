@@ -13,8 +13,8 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { authenticateSession } from "@/lib/auth-scope";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { createPropertyClaim } from "@/lib/property-identity";
 import { Property } from "@/models/Property";
 import { PropertyClaim } from "@/models/PropertyClaim";
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   await connectToDatabase();
 
-  const authUser = authenticate(request);
+  const authUser = await authenticateSession(request);
   if (!authUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 
   await connectToDatabase();
 
-  const authUser = authenticate(request);
+  const authUser = await authenticateSession(request);
   if (!authUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

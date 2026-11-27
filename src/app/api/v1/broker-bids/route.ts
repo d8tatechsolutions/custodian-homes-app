@@ -1,19 +1,19 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/app/api/v1/_helpers";
+import { authenticateSession } from "@/lib/auth-scope";
 import { type BidDoc, BidError, placeBid } from "@/lib/broker-bids";
 import { viewBids } from "@/lib/broker-bids-view";
 import { notifyBidEvent } from "@/lib/broker-notify";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { bidCreateInput, toBidTerms } from "@/lib/schemas/broker-bids";
 import { BrokerBid } from "@/models/BrokerBid";
 import { User } from "@/models/User";
 
 async function currentUser(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return null;
   const user = (await User.findById(auth.userId).select("role isActive").lean()) as {
     role?: string;

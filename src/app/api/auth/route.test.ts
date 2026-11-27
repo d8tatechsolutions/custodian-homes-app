@@ -573,3 +573,75 @@ describe("POST /api/auth — new users who have not confirmed their email", () =
     expect((await json(res)).error).toBe("Enter a valid national ID number");
   });
 });
+
+describe("POST /api/auth — link tokens must be text", () => {
+  beforeEach(() => {
+    resetModelStubs();
+    resetAuthRateLimits();
+  });
+
+  const attacks: unknown[] = [{ $ne: null }, { $gt: "" }, ["tok"], 42, true];
+
+  it("refuses a query object as a verification token without looking anyone up", async () => {
+    for (const token of attacks) {
+      const res = await POST(
+        buildRequest("/api/auth", { method: "POST", body: { action: "verify-email", token } }),
+      );
+      expect(res.status).toBe(400);
+    }
+    expect(user.findOne).not.toHaveBeenCalled();
+  });
+
+  it("refuses a query object as a reset token, so no password can be changed", async () => {
+    for (const token of attacks) {
+      const res = await POST(
+        buildRequest("/api/auth", {
+          method: "POST",
+          body: { action: "reset-password", token, password: "attacker-pass-1" },
+        }),
+      );
+      expect(res.status).toBe(400);
+    }
+    expect(user.findOne).not.toHaveBeenCalled();
+  });
+
+  it("refuses a new password that is not text", async () => {
+    const res = await POST(
+      buildRequest("/api/auth", {
+        method: "POST",
+        body: {
+          action: "reset-password",
+          token: "tok",
+          password: ["a", "b", "c", "d", "e", "f", "g", "h"],
+        },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(user.findOne).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/auth — reset-password", () => {
+  beforeEach(() => {
+    resetModelStubs();
+    resetAuthRateLimits();
+  });
+
+  it("sets the new password and signs the account out everywhere", async () => {
+    const account: Record<string, unknown> & { save: ReturnType<typeof vi.fn> } = mutableUser({
+      tokenVersion: 3,
+      passwordHash: "old-hash",
+    });
+    user.findOne.mockResolvedValue(account);
+    const res = await POST(
+      buildRequest("/api/auth", {
+        method: "POST",
+        body: { action: "reset-password", token: "tok", password: "new-pass-123" },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(account.tokenVersion).toBe(4);
+    expect(await bcrypt.compare("new-pass-123", account.passwordHash as string)).toBe(true);
+    expect(account.save).toHaveBeenCalled();
+  });
+});

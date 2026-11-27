@@ -1,15 +1,20 @@
+import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { authenticateSession } from "@/lib/auth-scope";
 import { acceptCommissionAgreement } from "@/lib/brokers";
-import { authenticate } from "@/lib/permissions";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await params;
+
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
 
   try {
     const updated = await acceptCommissionAgreement(auth.userId, id);

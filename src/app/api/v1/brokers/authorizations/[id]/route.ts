@@ -1,9 +1,11 @@
+import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
+import { authenticateSession } from "@/lib/auth-scope";
 import { revokeBrokerAuthorization } from "@/lib/brokers";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { User } from "@/models/User";
 
 const patchSchema = z.object({
@@ -12,7 +14,7 @@ const patchSchema = z.object({
 });
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -25,8 +27,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const { id } = await params;
 
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
+
   try {
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const parsed = patchSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

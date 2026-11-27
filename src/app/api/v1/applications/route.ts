@@ -1,10 +1,12 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { bindApplicationAttribution } from "@/lib/attributions";
+import { authenticateSession } from "@/lib/auth-scope";
 import { getAssignedPropertyIds, getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
-import { authenticate, getAdminAssignmentScope } from "@/lib/permissions";
+import { getAdminAssignmentScope } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { applicationCreateInput } from "@/lib/schemas/application";
 import { Application } from "@/models/Application";
@@ -13,7 +15,7 @@ import { Unit } from "@/models/Unit";
 import { User } from "@/models/User";
 
 export async function GET(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   await connectToDatabase();
@@ -96,7 +98,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const originError = checkSameOrigin(request);
   if (originError) return originError;
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   // Per account: far more than a person needs, low enough to stop scripted spam.
   const limited = await rateLimit(request, {
@@ -106,7 +108,7 @@ export async function POST(request: NextRequest) {
   });
   if (limited instanceof NextResponse) return limited;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = applicationCreateInput.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

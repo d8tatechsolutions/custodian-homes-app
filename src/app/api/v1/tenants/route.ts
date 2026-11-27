@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { writeAuditEvent } from "@/lib/audit";
 import { sendInviteEmail } from "@/lib/email";
 import { maskEmail } from "@/lib/mask-email";
@@ -179,7 +180,7 @@ export async function POST(request: NextRequest) {
   const authError = await requirePermission(request, "tenant:manage");
   if (authError) return authError;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = tenantInput.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

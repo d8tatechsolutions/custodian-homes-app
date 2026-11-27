@@ -1,10 +1,10 @@
 import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { authenticateSession } from "@/lib/auth-scope";
 import type { BrokerListingDoc } from "@/lib/broker-listings";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { BrokerListing } from "@/models/BrokerListing";
 import { BrokerProfile } from "@/models/BrokerProfile";
@@ -19,7 +19,7 @@ export interface ListingActor {
 export async function listingActor(request: NextRequest): Promise<ListingActor | NextResponse> {
   if (!isBrokerBidsEnabled()) return NextResponse.json({ error: "Not found" }, { status: 404 });
   await connectToDatabase();
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const user = (await User.findById(auth.userId).select("role isActive").lean()) as {
     role?: string;

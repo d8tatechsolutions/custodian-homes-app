@@ -1,5 +1,7 @@
+import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { AllocationError, allocateUnit } from "@/lib/allocation";
 import { connectToDatabase } from "@/lib/mongoose";
 import { asSoftDeleteModel } from "@/lib/mongoose-soft-delete";
@@ -15,6 +17,10 @@ interface RouteContext {
 
 export async function PATCH(request: NextRequest, ctx: RouteContext) {
   const { id } = await ctx.params;
+
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
 
   const auth = authenticate(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -34,7 +40,7 @@ export async function PATCH(request: NextRequest, ctx: RouteContext) {
   });
   if (authError) return authError;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = applicationDecisionInput.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -126,6 +132,10 @@ async function admitApprovedApplicant(application: {
 
 export async function DELETE(request: NextRequest, ctx: RouteContext) {
   const { id } = await ctx.params;
+
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
 
   const auth = authenticate(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -18,12 +18,21 @@ const BAD_TOOLS =
   /(python-requests|python-urllib|aiohttp|python-httpx|Go-http-client|libwww-perl|HTTrack|WebCopier|WebZIP|Teleport|SiteSnagger|nikto|sqlmap|nmap|masscan|zgrab|nuclei|dirbuster|gobuster|wpscan|acunetix|netsparker|jorgee|ZmEu|MJ12bot|DotBot|PetalBot|BLEXBot|SeznamBot\/3\.2-test|DataForSeoBot|serpstatbot|Barkrowler)/i;
 
 /** Paths that machines legitimately call without a browser user agent. */
-const MACHINE_PATHS = [/^\/api\/v1\/payments\//, /^\/api\/uploadthing/, /^\/api\/v1\/cron\//];
+export const MACHINE_PATHS = [
+  /^\/api\/v1\/payments\//,
+  /^\/api\/uploadthing/,
+  /^\/api\/v1\/cron\//,
+];
+
+/** True for the server-to-server endpoints above. */
+export function isMachinePath(pathname: string): boolean {
+  return MACHINE_PATHS.some((p) => p.test(pathname));
+}
 
 export type BotVerdict = "ai-crawler" | "bad-tool" | "no-user-agent" | null;
 
 export function botVerdict(pathname: string, userAgent: string | null | undefined): BotVerdict {
-  if (MACHINE_PATHS.some((p) => p.test(pathname))) return null;
+  if (isMachinePath(pathname)) return null;
   const ua = (userAgent ?? "").trim();
   if (!ua) return pathname.startsWith("/api/") ? "no-user-agent" : null;
   if (AI_CRAWLERS.test(ua)) return "ai-crawler";

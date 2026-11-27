@@ -3,9 +3,10 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { writeAuditEvent } from "@/lib/audit";
+import { authenticateSession } from "@/lib/auth-scope";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate, getAdminAssignmentScope } from "@/lib/permissions";
+import { getAdminAssignmentScope } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { Property } from "@/models/Property";
 import { User } from "@/models/User";
@@ -27,7 +28,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
   const { id } = await context.params;
   if (!isValidObjectId(id))
     return NextResponse.json({ error: "Invalid caretaker id" }, { status: 400 });
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   await connectToDatabase();
 

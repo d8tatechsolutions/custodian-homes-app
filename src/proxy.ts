@@ -1,8 +1,9 @@
 import jwt from "jsonwebtoken";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { botVerdict } from "@/lib/bot-guard";
+import { botVerdict, isMachinePath } from "@/lib/bot-guard";
 import { getJwtSecret } from "@/lib/jwt";
+import { checkSameOrigin } from "@/lib/rate-limit";
 import { getDashboardAllowedRoles, getRoleRoute, type Role } from "@/lib/role-routes";
 
 export const config = {
@@ -12,6 +13,8 @@ export const config = {
     "/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpe?g|gif|webp|avif|svg|ico|css|js|txt|xml|woff2?)$).*)",
   ],
 };
+
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 function getRoleFromToken(token: string): Role | null {
   try {
@@ -32,6 +35,18 @@ export async function proxy(request: NextRequest) {
       status: 403,
       headers: { "Content-Type": "text/plain", "X-Robots-Tag": "noindex, nofollow" },
     });
+  }
+
+  // Cross-site writes are refused for every API route in one place, so no route
+  // depends on remembering its own check. Server-to-server callbacks (payments,
+  // uploads, cron) send no browser origin headers and are exempt by path too.
+  if (
+    pathname.startsWith("/api/") &&
+    WRITE_METHODS.has(request.method) &&
+    !isMachinePath(pathname)
+  ) {
+    const crossSite = checkSameOrigin(request);
+    if (crossSite) return crossSite;
   }
 
   const token = request.cookies.get("keja-token")?.value;

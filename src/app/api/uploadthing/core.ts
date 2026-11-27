@@ -1,8 +1,8 @@
 import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
+import { authenticateSession } from "@/lib/auth-scope";
 import { isBrokerBidsEnabled, isTasksV2Enabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { User } from "@/models/User";
 
 const f = createUploadthing();
@@ -14,7 +14,7 @@ export const ourFileRouter = {
     image: { maxFileSize: "4MB", maxFileCount: 8, acl: "public-read" },
   })
     .middleware(async ({ req }) => {
-      const auth = authenticate(req);
+      const auth = await authenticateSession(req);
       if (!auth) {
         throw new UploadThingError("Unauthorized");
       }
@@ -53,7 +53,7 @@ export const ourFileRouter = {
   })
     .middleware(async ({ req }) => {
       if (!isTasksV2Enabled()) throw new UploadThingError("Not available");
-      const auth = authenticate(req);
+      const auth = await authenticateSession(req);
       if (!auth) throw new UploadThingError("Unauthorized");
       await connectToDatabase();
       const user = await User.findById(auth.userId).select("isActive role").lean();
@@ -76,7 +76,7 @@ export const ourFileRouter = {
   })
     .middleware(async ({ req }) => {
       if (!isBrokerBidsEnabled()) throw new UploadThingError("Not available");
-      const auth = authenticate(req);
+      const auth = await authenticateSession(req);
       if (!auth) throw new UploadThingError("Unauthorized");
       await connectToDatabase();
       const user = await User.findById(auth.userId).select("isActive role").lean();

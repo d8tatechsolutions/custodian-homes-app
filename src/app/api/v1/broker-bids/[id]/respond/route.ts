@@ -2,12 +2,12 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/app/api/v1/_helpers";
+import { authenticateSession } from "@/lib/auth-scope";
 import { BidError, respondToBid } from "@/lib/broker-bids";
 import { viewBids } from "@/lib/broker-bids-view";
 import { notifyBidEvent } from "@/lib/broker-notify";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { bidResponseInput } from "@/lib/schemas/broker-bids";
 import { User } from "@/models/User";
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     return NextResponse.json({ error: "Invalid request id" }, { status: 400 });
 
   await connectToDatabase();
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const user = (await User.findById(auth.userId).select("role isActive").lean()) as {
     role?: string;

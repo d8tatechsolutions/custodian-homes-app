@@ -4,6 +4,15 @@ import { buildRequest, signToken } from "@/test/utils/api-request";
 import { makeObjectId, makeUser } from "@/test/utils/factories";
 import { buildQuery, getModelStubs, resetModelStubs } from "@/test/utils/model-mocks";
 
+// These route tests stub the database per test. authenticateSession also checks the
+// account is active and the token is not revoked (covered in auth-scope.test.ts);
+// here it reads the token only, as the routes did before that check existed.
+vi.mock("@/lib/auth-scope", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth-scope")>();
+  const { authenticate } = await import("@/lib/permissions");
+  return { ...actual, authenticateSession: async (request: Request) => authenticate(request) };
+});
+
 vi.mock("@/lib/mongoose", () => ({
   connectToDatabase: vi.fn().mockResolvedValue(undefined),
 }));
@@ -34,7 +43,7 @@ describe("/api/v1/brokers/authorizations/[id]", () => {
         method: "PATCH",
         body: { status: "revoked" },
       }),
-      { params: Promise.resolve({ id: "auth-1" }) },
+      { params: Promise.resolve({ id: "6a0000000000000000000b01" }) },
     );
     expect(res.status).toBe(401);
   });
@@ -44,7 +53,7 @@ describe("/api/v1/brokers/authorizations/[id]", () => {
     brokerAuthorization.findById
       .mockReturnValueOnce(
         buildQuery({
-          _id: "auth-1",
+          _id: "6a0000000000000000000b01",
           propertyId: "prop-1",
           scopeType: "property",
           scopeId: "prop-1",
@@ -53,7 +62,7 @@ describe("/api/v1/brokers/authorizations/[id]", () => {
       )
       .mockReturnValueOnce(
         buildQuery({
-          _id: "auth-1",
+          _id: "6a0000000000000000000b01",
           propertyId: "prop-1",
           scopeType: "property",
           scopeId: "prop-1",
@@ -69,7 +78,7 @@ describe("/api/v1/brokers/authorizations/[id]", () => {
         token: signToken(ADMIN_ID),
         body: { status: "revoked", reason: "End of contract" },
       }),
-      { params: Promise.resolve({ id: "auth-1" }) },
+      { params: Promise.resolve({ id: "6a0000000000000000000b01" }) },
     );
 
     expect(res.status).toBe(200);

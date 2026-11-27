@@ -2,10 +2,10 @@ import crypto from "node:crypto";
 import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { authenticateSession } from "@/lib/auth-scope";
 import { BROKER_INVITE_TTL_MS, deliverBrokerInvite } from "@/lib/broker-invite";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { BrokerProfile } from "@/models/BrokerProfile";
 import { User } from "@/models/User";
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ us
   if (!isValidObjectId(userId))
     return NextResponse.json({ error: "Invalid broker" }, { status: 400 });
   await connectToDatabase();
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const caller = (await User.findById(auth.userId).select("role isActive").lean()) as {
     role?: string;

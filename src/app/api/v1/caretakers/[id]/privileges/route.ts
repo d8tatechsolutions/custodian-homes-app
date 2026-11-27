@@ -2,11 +2,12 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { writeAuditEvent } from "@/lib/audit";
+import { authenticateSession } from "@/lib/auth-scope";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
 import {
-  authenticate,
   CARETAKER_PRIVILEGES,
   type CaretakerPrivilege,
   getAdminAssignmentScope,
@@ -33,7 +34,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     return NextResponse.json({ error: "Invalid caretaker id" }, { status: 400 });
   }
 
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -48,7 +49,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = privilegeInput.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

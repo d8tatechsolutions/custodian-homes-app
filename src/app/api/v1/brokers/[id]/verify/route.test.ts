@@ -4,6 +4,15 @@ import { buildRequest, signToken } from "@/test/utils/api-request";
 import { makeObjectId, makeUser } from "@/test/utils/factories";
 import { buildQuery, getModelStubs, resetModelStubs } from "@/test/utils/model-mocks";
 
+// These route tests stub the database per test. authenticateSession also checks the
+// account is active and the token is not revoked (covered in auth-scope.test.ts);
+// here it reads the token only, as the routes did before that check existed.
+vi.mock("@/lib/auth-scope", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth-scope")>();
+  const { authenticate } = await import("@/lib/permissions");
+  return { ...actual, authenticateSession: async (request: Request) => authenticate(request) };
+});
+
 vi.mock("@/lib/mongoose", () => ({
   connectToDatabase: vi.fn().mockResolvedValue(undefined),
 }));
@@ -35,7 +44,7 @@ describe("/api/v1/brokers/[id]/verify", () => {
         method: "POST",
         body: { decision: "verified" },
       }),
-      { params: Promise.resolve({ id: "prof-1" }) },
+      { params: Promise.resolve({ id: "6a0000000000000000000d01" }) },
     );
     expect(res.status).toBe(401);
   });
@@ -48,7 +57,7 @@ describe("/api/v1/brokers/[id]/verify", () => {
         token: signToken(ADMIN_ID),
         body: { decision: "verified" },
       }),
-      { params: Promise.resolve({ id: "prof-1" }) },
+      { params: Promise.resolve({ id: "6a0000000000000000000d01" }) },
     );
     expect(res.status).toBe(403);
   });
@@ -58,8 +67,8 @@ describe("/api/v1/brokers/[id]/verify", () => {
       buildQuery(makeUser({ _id: SYS_ADMIN_ID, role: "system-admin" })),
     );
     brokerProfile.findById
-      .mockReturnValueOnce(buildQuery({ _id: "prof-1", userId: "u-1", status: "pending" }))
-      .mockReturnValueOnce(buildQuery({ _id: "prof-1", userId: "u-1", status: "verified" }));
+      .mockReturnValueOnce(buildQuery({ _id: "6a0000000000000000000d01", userId: "u-1", status: "pending" }))
+      .mockReturnValueOnce(buildQuery({ _id: "6a0000000000000000000d01", userId: "u-1", status: "verified" }));
     brokerProfile.updateOne.mockResolvedValue({ modifiedCount: 1 });
 
     const res = await POST(
@@ -68,7 +77,7 @@ describe("/api/v1/brokers/[id]/verify", () => {
         token: signToken(SYS_ADMIN_ID),
         body: { decision: "verified", notes: "Approved" },
       }),
-      { params: Promise.resolve({ id: "prof-1" }) },
+      { params: Promise.resolve({ id: "6a0000000000000000000d01" }) },
     );
 
     expect(res.status).toBe(200);

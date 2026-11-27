@@ -3,8 +3,9 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveAttributionDispute } from "@/lib/attributions";
+import { authenticateSession } from "@/lib/auth-scope";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate, type Role } from "@/lib/permissions";
+import type { Role } from "@/lib/permissions";
 import { User } from "@/models/User";
 
 const disputeInput = z.object({
@@ -15,7 +16,7 @@ const disputeInput = z.object({
 });
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

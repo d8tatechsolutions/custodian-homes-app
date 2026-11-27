@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { normalizeAmenities } from "@/lib/amenities";
 import { DEFAULT_PROPERTY_PURPOSE, PROPERTY_PURPOSES } from "@/lib/domain-enums";
 import { normalizeUnitDuplex, normalizeUpperFloorMode } from "@/lib/duplex-layout";
@@ -236,7 +237,7 @@ export async function POST(request: NextRequest) {
   const authError = await requirePermission(request, "property:create");
   if (authError) return authError;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = propertyInput.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

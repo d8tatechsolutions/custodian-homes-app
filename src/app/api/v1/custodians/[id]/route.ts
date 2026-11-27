@@ -1,10 +1,13 @@
+import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { writeAuditEvent } from "@/lib/audit";
+import { authenticateSession } from "@/lib/auth-scope";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate, CUSTODIAN_PRIVILEGES, getAdminAssignmentScope } from "@/lib/permissions";
+import { CUSTODIAN_PRIVILEGES, getAdminAssignmentScope } from "@/lib/permissions";
 import { Property } from "@/models/Property";
 import { User } from "@/models/User";
 
@@ -19,7 +22,7 @@ const custodianUpdateSchema = z.object({
 });
 
 async function loadActorAndCustodian(request: NextRequest, id: string) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
 
   await connectToDatabase();
@@ -60,11 +63,14 @@ async function loadActorAndCustodian(request: NextRequest, id: string) {
 /** Update a custodian's profile details. */
 export async function PATCH(request: NextRequest, ctx: RouteContext) {
   const { id } = await ctx.params;
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
   const result = await loadActorAndCustodian(request, id);
   if (result.error) return result.error;
   const { actor, custodian } = result;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = custodianUpdateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -121,6 +127,9 @@ export async function PATCH(request: NextRequest, ctx: RouteContext) {
  */
 export async function DELETE(request: NextRequest, ctx: RouteContext) {
   const { id } = await ctx.params;
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
   const result = await loadActorAndCustodian(request, id);
   if (result.error) return result.error;
   const { actor, custodian } = result;
