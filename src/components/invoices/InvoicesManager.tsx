@@ -386,7 +386,7 @@ export const InvoicesManager = (props: InvoicesManagerProps) => {
           </TabsList>
         </Tabs>
 
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
           <SearchInput
             value={query}
             onChange={setQuery}

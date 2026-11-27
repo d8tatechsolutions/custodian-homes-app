@@ -231,7 +231,7 @@ export const DashboardShell = ({
 
         <main className="flex-1 min-w-0">
           <div className="mb-8 flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
+            <div className="flex min-w-0 items-start gap-3">
               <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
                 <SheetTrigger asChild>
                   <Button
@@ -243,13 +243,15 @@ export const DashboardShell = ({
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-[80%] max-w-xs p-0">
+                <SheetContent side="left" className="w-[80%] max-w-xs overflow-y-auto p-0">
                   <SheetHeader className="border-b border-border p-5 text-left">
                     <SheetTitle asChild>
                       <Logo />
                     </SheetTitle>
                   </SheetHeader>
                   <div className="px-3 py-4">
+                    {/* Search is in the header from tablet width up; on phones it lives here. */}
+                    <SearchBar className="mb-4 max-w-none md:hidden" />
                     <div className="mb-3 px-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
                       {roleName}
                     </div>
@@ -257,8 +259,8 @@ export const DashboardShell = ({
                   </div>
                 </SheetContent>
               </Sheet>
-              <div>
-                <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">
+              <div className="min-w-0">
+                <h1 className="break-words font-display text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
                   {title}
                 </h1>
                 {subtitle && <p className="mt-1 text-muted-foreground">{subtitle}</p>}

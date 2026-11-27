@@ -336,7 +336,7 @@ export const TenantsManager = ({
           </TabsList>
         </Tabs>
 
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
           <SearchInput
             value={query}
             onChange={setQuery}
@@ -344,7 +344,7 @@ export const TenantsManager = ({
             className="w-full sm:w-56"
           />
           <Select value={propertyFilter} onValueChange={setPropertyFilter}>
-            <SelectTrigger className="w-56">
+            <SelectTrigger className="w-full min-w-0 flex-1 sm:w-56 sm:flex-none">
               <SelectValue placeholder="All properties" />
             </SelectTrigger>
             <SelectContent>

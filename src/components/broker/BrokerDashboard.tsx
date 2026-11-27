@@ -286,10 +286,13 @@ export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
                 <TabsTrigger value="requests">
                   My requests
                   {bids.some((b) => b.awaiting === "broker") ? (
-                    <span
-                      className="ml-1.5 h-2 w-2 rounded-full bg-primary"
-                      aria-label="needs your answer"
-                    />
+                    <>
+                      <span
+                        className="ml-1.5 inline-block h-2 w-2 shrink-0 rounded-full bg-primary"
+                        aria-hidden="true"
+                      />
+                      <span className="sr-only">(needs your answer)</span>
+                    </>
                   ) : null}
                 </TabsTrigger>
               ) : null}

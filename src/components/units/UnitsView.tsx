@@ -330,7 +330,7 @@ export function UnitsView({ nav, roleName, canManage = true }: Props) {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Select
             value={statusFilter}
             onValueChange={(v) => setStatusFilter(v as "all" | UnitStatus)}
@@ -351,7 +351,7 @@ export function UnitsView({ nav, roleName, canManage = true }: Props) {
             value={query}
             onChange={setQuery}
             placeholder="Search units…"
-            className="w-56"
+            className="min-w-0 flex-1 sm:w-56 sm:flex-none"
           />
           <span className="text-sm text-muted-foreground">{filtered.length} units</span>
         </div>
