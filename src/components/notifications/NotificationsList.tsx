@@ -16,6 +16,7 @@ import {
 import { useNotificationMutations } from "@/hooks/use-notifications";
 import { useUnreadCount } from "@/hooks/use-unread-count";
 import { relativeTime } from "@/lib/format";
+import { isInAppPath } from "@/lib/in-app-path";
 import { cn } from "@/lib/utils";
 import type { AppNotification } from "@/types/notifications";
 
@@ -243,7 +244,7 @@ export const NotificationsList = () => {
                     )}
                     onClick={() => {
                       void handleMarkRead(notification._id);
-                      if (notification.link) void router.push(notification.link);
+                      if (isInAppPath(notification.link)) void router.push(notification.link);
                     }}
                   >
                     <TableCell className="font-medium text-muted-foreground">

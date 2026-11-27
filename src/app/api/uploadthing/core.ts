@@ -3,6 +3,7 @@ import { UploadThingError } from "uploadthing/server";
 import { authenticateSession } from "@/lib/auth-scope";
 import { isBrokerBidsEnabled, isTasksV2Enabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
+import { uploadRejection } from "@/lib/upload-rules";
 import { User } from "@/models/User";
 
 const f = createUploadthing();
@@ -13,11 +14,13 @@ export const ourFileRouter = {
   propertyImages: f({
     image: { maxFileSize: "4MB", maxFileCount: 8, acl: "public-read" },
   })
-    .middleware(async ({ req }) => {
+    .middleware(async ({ req, files }) => {
       const auth = await authenticateSession(req);
       if (!auth) {
         throw new UploadThingError("Unauthorized");
       }
+      const rejected = uploadRejection(files, { allowPdf: false });
+      if (rejected) throw new UploadThingError(rejected);
       // Re-verify against the database: the JWT alone would let a deactivated
       // account keep uploading until its 7-day token expires.
       await connectToDatabase();
@@ -51,10 +54,12 @@ export const ourFileRouter = {
     image: { maxFileSize: "4MB", maxFileCount: 3 },
     pdf: { maxFileSize: "8MB", maxFileCount: 3 },
   })
-    .middleware(async ({ req }) => {
+    .middleware(async ({ req, files }) => {
       if (!isTasksV2Enabled()) throw new UploadThingError("Not available");
       const auth = await authenticateSession(req);
       if (!auth) throw new UploadThingError("Unauthorized");
+      const rejected = uploadRejection(files, { allowPdf: true });
+      if (rejected) throw new UploadThingError(rejected);
       await connectToDatabase();
       const user = await User.findById(auth.userId).select("isActive role").lean();
       if (!user?.isActive || !TASK_UPLOAD_ROLES.has(String(user.role))) {
@@ -74,10 +79,12 @@ export const ourFileRouter = {
     image: { maxFileSize: "4MB", maxFileCount: 10 },
     pdf: { maxFileSize: "8MB", maxFileCount: 1 },
   })
-    .middleware(async ({ req }) => {
+    .middleware(async ({ req, files }) => {
       if (!isBrokerBidsEnabled()) throw new UploadThingError("Not available");
       const auth = await authenticateSession(req);
       if (!auth) throw new UploadThingError("Unauthorized");
+      const rejected = uploadRejection(files, { allowPdf: true });
+      if (rejected) throw new UploadThingError(rejected);
       await connectToDatabase();
       const user = await User.findById(auth.userId).select("isActive role").lean();
       if (!user?.isActive || user.role !== "broker") throw new UploadThingError("Unauthorized");

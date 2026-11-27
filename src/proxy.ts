@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { botVerdict, isMachinePath } from "@/lib/bot-guard";
 import { getJwtSecret } from "@/lib/jwt";
-import { checkSameOrigin } from "@/lib/rate-limit";
+import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { getDashboardAllowedRoles, getRoleRoute, type Role } from "@/lib/role-routes";
 
 export const config = {
@@ -15,6 +15,10 @@ export const config = {
 };
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+/** Largest accepted API write body (1 MB). */
+const MAX_API_BODY_BYTES = 1_000_000;
+/** Per-IP ceiling across all API calls, per server instance. */
+const API_REQUESTS_PER_MINUTE = 600;
 
 function getRoleFromToken(token: string): Role | null {
   try {
@@ -47,6 +51,28 @@ export async function proxy(request: NextRequest) {
   ) {
     const crossSite = checkSameOrigin(request);
     if (crossSite) return crossSite;
+
+    // No API write needs more than a few tens of KB (the largest is a full
+    // property structure). Refuse oversized bodies before any route reads them.
+    const declaredLength = Number(request.headers.get("content-length") ?? 0);
+    if (declaredLength > MAX_API_BODY_BYTES) {
+      return NextResponse.json({ error: "Request is too large" }, { status: 413 });
+    }
+  }
+
+  // Floor against floods from one address: a generous per-IP ceiling across all
+  // API calls (a busy dashboard page makes 5-15). Machine callbacks are exempt;
+  // per-route and database-backed limits still apply on top.
+  if (pathname.startsWith("/api/") && !isMachinePath(pathname)) {
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    if (ip) {
+      const flood = await rateLimit(request, {
+        windowMs: 60_000,
+        limit: API_REQUESTS_PER_MINUTE,
+        key: `api-all:${ip}`,
+      });
+      if (flood instanceof NextResponse) return flood;
+    }
   }
 
   const token = request.cookies.get("keja-token")?.value;

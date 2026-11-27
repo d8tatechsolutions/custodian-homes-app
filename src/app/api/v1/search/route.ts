@@ -29,7 +29,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const q = (request.nextUrl.searchParams.get("q") ?? "").trim();
+  // Capped like the other search boxes: nobody types more, and it keeps the
+  // database pattern small.
+  const q = (request.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 100);
   if (q.length < 2) {
     return NextResponse.json({ data: [] as SearchResult[] });
   }

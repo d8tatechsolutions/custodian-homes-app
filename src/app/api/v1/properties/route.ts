@@ -26,6 +26,7 @@ import {
 import { isActivePropertyTypeKey } from "@/lib/property-type-store";
 import { blockInput, MAX_UNITS_PER_PROPERTY } from "@/lib/schemas/structure";
 import { buildUnitInserts, countRequestedUnits, validateBlockLayouts } from "@/lib/units";
+import { isPropertyImageUrl, MAX_PROPERTY_IMAGES, PROPERTY_IMAGE_ERROR } from "@/lib/upload-rules";
 import { Block } from "@/models/Block";
 import { ManagementAssignment } from "@/models/ManagementAssignment";
 import { Property } from "@/models/Property";
@@ -82,7 +83,10 @@ const propertyInput = z.object({
   beds: z.coerce.number().int().nonnegative(),
   baths: z.coerce.number().int().nonnegative(),
   area: z.coerce.number().nonnegative().optional(),
-  images: z.array(z.string()).optional(),
+  images: z
+    .array(z.string().trim().refine(isPropertyImageUrl, PROPERTY_IMAGE_ERROR))
+    .max(MAX_PROPERTY_IMAGES, `Up to ${MAX_PROPERTY_IMAGES} photos`)
+    .optional(),
   amenities: z.array(z.string()).optional(),
   status: z.enum(["available", "occupied", "maintenance"]).optional(),
   dateCompleted: z.coerce.date().nullable().optional(),
