@@ -862,17 +862,25 @@ describe("requirePermission — notification & settings actions", () => {
     }
   });
 
-  it("caretaker without assignment is denied every notification/settings action", async () => {
+  // Client decision 2026-11-27: own notifications and settings are self-only and
+  // open to every active account; managing notifications still needs an assignment.
+  it("caretaker without assignment may use only the self-only notification/settings actions", async () => {
     const mocker = caretakerUser([]);
     for (const action of NOTIFICATION_SETTINGS_ACTIONS) {
-      expect((await guard(action, undefined, mocker))?.status).toBe(403);
+      const res = await guard(action, undefined, mocker);
+      if (action === "notification:manage") expect(res?.status).toBe(403);
+      else expect(res).toBeNull();
     }
   });
 
-  it("orphaned caretaker is denied every notification/settings action", async () => {
+  // Client decision 2026-11-27: own notifications and settings are self-only and
+  // open to every active account; managing notifications still needs an assignment.
+  it("orphaned caretaker may use only the self-only notification/settings actions", async () => {
     const mocker = caretakerUser([]);
     for (const action of NOTIFICATION_SETTINGS_ACTIONS) {
-      expect((await guard(action, undefined, mocker))?.status).toBe(403);
+      const res = await guard(action, undefined, mocker);
+      if (action === "notification:manage") expect(res?.status).toBe(403);
+      else expect(res).toBeNull();
     }
   });
 });
@@ -1190,5 +1198,59 @@ describe("getTenantScope — caretaker assignments", () => {
     expect(res.filter).toEqual({ propertyId: { $in: [assignedPropertyId] } });
     expect(res.leaseFilter).toEqual({ propertyId: { $in: [assignedPropertyId] } });
     expect(res.staffAssignmentBacked).toBe(true);
+  });
+});
+
+describe("requirePermission — brokers", () => {
+  beforeEach(() => {
+    resetModelStubs();
+    managementAssignment.find.mockReturnValue(buildQuery([]));
+  });
+
+  const broker = () => makeUser({ _id: makeObjectId("broker"), role: "broker" });
+
+  it("lets a broker read their own notifications and use chat", async () => {
+    for (const action of ["notification:read-own", "chat:read-own", "chat:send"] as Action[]) {
+      expect(await guard(action, undefined, broker())).toBeNull();
+    }
+  });
+
+  it("still refuses a broker everything else", async () => {
+    for (const action of ["notification:manage", "property:edit", "tenant:manage"] as Action[]) {
+      expect((await guard(action, undefined, broker()))?.status).toBe(403);
+    }
+  });
+});
+
+describe("requirePermission — self-only actions for staff without assignments", () => {
+  beforeEach(() => {
+    resetModelStubs();
+    managementAssignment.find.mockReturnValue(buildQuery([]));
+  });
+
+  it("lets unassigned caretakers and custodians read their notifications and settings", async () => {
+    for (const person of [caretakerUser([]), custodianUser()]) {
+      for (const action of [
+        "notification:read-own",
+        "settings:read",
+        "settings:write",
+      ] as Action[]) {
+        expect(await guard(action, undefined, person)).toBeNull();
+      }
+    }
+  });
+
+  it("still refuses unassigned staff all property, tenant and money actions", async () => {
+    for (const person of [caretakerUser([]), custodianUser()]) {
+      for (const action of ["property:edit", "tenant:manage", "notification:manage"] as Action[]) {
+        expect((await guard(action, undefined, person))?.status).toBe(403);
+      }
+    }
+  });
+
+  it("still refuses a deactivated account", async () => {
+    expect(
+      (await guard("settings:read", undefined, custodianUser({ isActive: false })))?.status,
+    ).toBe(401);
   });
 });
