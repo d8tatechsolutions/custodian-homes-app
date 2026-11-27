@@ -187,22 +187,77 @@ Decisions marked *(client)* were approved by the client before the change.
     which the app doesn't use.
   - 6 moderate advisories remain, all in UploadThing's `@effect/platform` (see below).
 
+## Email links, account privacy and hardening (2026-11-27, client-approved)
+
+- **Hashed email links (`lib/link-tokens.ts`):**
+  - Verification, invite and reset links are stored only as a SHA-256 fingerprint, so
+    someone reading the database can't use a pending link. All 8 writers were changed:
+    `api/auth` plus the admin users, caretakers, custodians, tenants and broker invite routes.
+  - Lookups also accept the plain value (`storedLinkTokenMatch`), so links sent before this
+    change keep working until they expire (24 hours at most). Nothing already sent breaks.
+- **Separate reset link:**
+  - New `User.resetPasswordToken` / `resetPasswordTokenExpiry` fields. Requesting a reset
+    no longer cancels a pending verification link.
+  - Reset links sent before this change, stored plain in `verificationToken` with a 1-hour
+    expiry, are still honoured inside a 1-hour window, then cleared.
+- **No account discovery:**
+  - `resend-verification` gives the same 200 answer for unknown, confirmed and unconfirmed
+    emails.
+  - Sign-up with an email that already has an account gives the same answer as a new
+    sign-up. An unconfirmed account gets a fresh verification link. A confirmed or
+    deactivated one gets the new `sendAccountExistsEmail` ("you already have an account",
+    with sign-in and reset links). The existing account is never changed.
+  - `forgot-password` and existing-email sign-up now use the same per-email limit as resend.
+  - The phone-number check on sign-up still says when a number is taken: an account can't be
+    created without a unique number.
+  - UI copy changed to match: "Check your inbox" toasts and a neutral "we sent an email" panel.
+- **Indexes:** sparse indexes on `verificationToken` and `resetPasswordToken`, so link
+  lookups don't scan the users collection. They build on first use.
+- **Uploads (`lib/upload-rules.ts`, `api/uploadthing/core.ts`):**
+  - All three upload routes refuse SVG (it can carry script) and files whose extension
+    doesn't match their type (e.g. `evil.html` sent as `image/png`).
+  - Photos must be JPG, PNG, WebP, GIF, AVIF or HEIC. Camera files with no extension pass
+    on their type. Existing size and count limits are unchanged.
+- **Property photos:** create/update accept only uploaded files (UploadThing hosts) or the
+  site's own `/images/…` placeholders, at most 50. Before, any text was accepted: an outside
+  tracking image, a `data:` blob or a `javascript:` link.
+- **Overload limits (`proxy.ts`):**
+  - API writes over 1 MB are refused with 413 before any route reads them. The largest real
+    body is a full property structure, about 50 KB.
+  - A per-IP ceiling of 600 API calls a minute applies, per instance. Payment callbacks,
+    UploadThing and cron are exempt.
+  - Search text is capped at 100 characters on the search and marketplace endpoints.
+- **Links:** notification links are followed only if they are in-app paths
+  (`lib/in-app-path.ts`). The server only ever sets fixed dashboard paths; this is a safety
+  net.
+- **Caching (latency):**
+  - `lib/memory-cache.ts` is a short in-memory cache with one shared load per key. It is used
+    for the stored USD/KES rate (5 minutes, cleared as soon as a new rate is stored).
+  - Public marketplace responses (list, listing detail, broker listing detail) send
+    `public, s-maxage=30, stale-while-revalidate=120` (`lib/edge-cache.ts`), so Vercel's
+    edge serves them without reaching the server. Only viewer-independent routes use it.
+  - Tests clear the cache after each test (`test/setup.ts`).
+- **Verified against a running build:**
+  - `{"$ne":null}` reset and verify tokens → 400.
+  - A 1.1 MB body → 413. A write from another origin → 403. Malformed JSON → 400.
+  - No user agent, or an attack-tool user agent → 403.
+  - Resend answers are identical for unknown and registered emails.
+  - A malformed public listing id → 404. An outside property photo → 400.
+  - Both marketplace detail pages were rendered with test listings (deleted afterwards).
+
 ## Still open
 
 - UploadThing has no patched 7.x release for the current advisory, and private files need a
   paid plan. Task photos and receipts rely on unguessable links that are only returned to
   people allowed to see the task.
-- **Found but not changed (each would change behaviour; raise with the client first):**
-  - Verification and reset links are stored in plain text, so a database leak exposes the
-    pending links. Hashing them would invalidate links already sent.
-  - Verification and reset share one token field, so requesting a reset cancels a pending
-    verification link.
-  - `resend-verification` answers "User not found", which reveals whether an email is
-    registered. Sign-up reveals the same thing by design.
-  - The general rate limiter is in memory per server instance. On Vercel each instance counts
-    separately; the database-backed limiter covers sign-in and enquiries.
-  - The marketplace and broker listing detail pages were not rendered in the layout check:
-    the dev database has no live listing.
+- The general rate limiter and the new per-IP ceiling are in memory per server instance.
+  Large distributed floods are handled by Vercel's built-in network protection. Vercel's
+  Firewall rules and Attack Challenge Mode are dashboard settings, left to the client.
+- **Function and database region:** `vercel.json` sets no region, so functions run in
+  Vercel's default (US East). If the Atlas cluster is in another region, every query crosses
+  regions. This is the largest latency lever: check both regions and align them. It's a
+  Vercel/Atlas setting, not code.
+- About 150 free-text fields have no individual length cap. The 1 MB body limit bounds them.
 
 ## Local `.env` note
 
