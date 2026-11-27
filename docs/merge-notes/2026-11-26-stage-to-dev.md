@@ -1,8 +1,8 @@
 # Merging `stage` → `dev` (2026-11-26)
 
-`dev` has not moved since `stage` branched from it, so this is a **fast-forward**: no
-conflicts. Open a PR `stage → dev` and merge it as is (merge commit or fast-forward; please
-don't squash, the commits are grouped by area so they're easy to review and revert).
+`dev` has only moved by the merge commit of PR #6 (`stage` up to `ab6f97c`), so merging
+`stage` again has no conflicts. Merge it as is (merge commit or fast-forward; please don't
+squash, the commits are grouped by area so they're easy to review and revert).
 
 ## Before you merge
 
@@ -244,6 +244,28 @@ Decisions marked *(client)* were approved by the client before the change.
   - Resend answers are identical for unknown and registered emails.
   - A malformed public listing id → 404. An outside property photo → 400.
   - Both marketplace detail pages were rendered with test listings (deleted afterwards).
+
+## CI fix and public email (2026-11-27)
+
+- **Why CI failed on `dev` (run 45962846906):** the `biome check .` step failed on
+  **formatting** in eight files (line wraps and blank lines), so typecheck, build and tests
+  never ran. The `any` warnings did not fail it, because warnings don't stop the job. The eight
+  files are now formatted. No code changed.
+- **`any` in tests removed** (it was 21 uses, now 0):
+  - Response bodies use a shared `ResponseJson` type (`test/utils/api-request.ts`).
+  - `TestProperty` has optional `blocks`, so the unit tests need no cast.
+  - Redaction tests now check that private fields are **absent**
+    (`not.toHaveProperty`), which is stricter than the old `toBeUndefined`.
+  - `scripts/wipe-and-reseed.ts` checks the DB connection instead of casting it.
+- **Still warnings, not errors:** about 125 `any` uses remain in the broker, attribution
+  and commission code (mostly `.lean()` results). Typing them is a refactor across those
+  routes, so it was left for a separate change.
+- **Public email:** the footer, contact page, FAQ, privacy and terms now show
+  `info@custodianhomes.co.ke`. Signed-in help notes, email footers, and the inbox that receives
+  contact-form messages still use `support@`.
+- **Checking Biome on Windows:** with `core.autocrlf=true`, `biome check .` reports every
+  file as misformatted (CRLF). To see what CI sees, check an LF worktree:
+  `git -c core.autocrlf=false worktree add --detach <dir> stage`, then run Biome there.
 
 ## Still open
 
