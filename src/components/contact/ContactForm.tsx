@@ -69,10 +69,10 @@ export default function ContactForm() {
 
           <div className="mt-6 flex flex-wrap gap-4 text-sm text-muted-foreground">
             <a
-              href={`mailto:${BRAND.emails.support}`}
+              href={`mailto:${BRAND.emails.info}`}
               className="inline-flex items-center gap-1.5 hover:text-foreground"
             >
-              <Mail className="h-4 w-4" /> {BRAND.emails.support}
+              <Mail className="h-4 w-4" /> {BRAND.emails.info}
             </a>
             <span className="inline-flex items-center gap-1.5">
               <MapPin className="h-4 w-4" /> Nairobi, Kenya

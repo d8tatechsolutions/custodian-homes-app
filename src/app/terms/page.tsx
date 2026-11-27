@@ -56,8 +56,8 @@ export default function TermsPage() {
           <h2 className="font-display text-xl font-semibold text-foreground">6. Contact</h2>
           <p>
             Questions about these Terms:{" "}
-            <a href={`mailto:${BRAND.emails.support}`} className="text-primary hover:underline">
-              {BRAND.emails.support}
+            <a href={`mailto:${BRAND.emails.info}`} className="text-primary hover:underline">
+              {BRAND.emails.info}
             </a>
             .
           </p>

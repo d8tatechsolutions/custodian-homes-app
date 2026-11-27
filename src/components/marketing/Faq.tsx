@@ -23,7 +23,7 @@ const faqs = [
   },
   {
     q: "How do I contact support?",
-    a: "Use the Contact page or email support@custodianhomes.co.ke. We respond within one business day.",
+    a: "Use the Contact page or email info@custodianhomes.co.ke. We respond within one business day.",
   },
 ];
 
