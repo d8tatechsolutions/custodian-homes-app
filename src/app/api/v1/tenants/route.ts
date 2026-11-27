@@ -6,6 +6,7 @@ import { z } from "zod";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { writeAuditEvent } from "@/lib/audit";
 import { sendInviteEmail } from "@/lib/email";
+import { hashLinkToken } from "@/lib/link-tokens";
 import { maskEmail } from "@/lib/mask-email";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
@@ -330,7 +331,7 @@ export async function POST(request: NextRequest) {
             email,
             name: parsed.data.name,
             phone,
-            verificationToken,
+            verificationToken: hashLinkToken(verificationToken),
             verificationTokenExpiry,
           },
         },
@@ -393,7 +394,7 @@ export async function POST(request: NextRequest) {
         role: "tenant",
         isActive: false,
         isVerified: false,
-        verificationToken,
+        verificationToken: hashLinkToken(verificationToken),
         verificationTokenExpiry,
         userCode,
       }),

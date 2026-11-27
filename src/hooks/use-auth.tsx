@@ -171,7 +171,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const data = await res.json().catch(() => ({}));
         throw new AuthError(data.error || "Sign up failed", data.code);
       }
-      toast.success("Account created!");
+      // Same words whether or not the email already had an account (see api/auth).
+      toast.success("Check your inbox");
     } catch (err) {
       if (!isNotVerified(err)) {
         const message = err instanceof Error ? err.message : "Sign up failed";
@@ -192,7 +193,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const data = await res.json();
         throw new Error(data.error || "Failed to resend verification email");
       }
-      toast.success("Verification email sent");
+      toast.success("Check your inbox");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to resend verification email";
       toast.error("Resend failed", { description: message });

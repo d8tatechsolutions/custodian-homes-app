@@ -1,5 +1,6 @@
 /** @vitest-environment node */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { hashLinkToken } from "@/lib/link-tokens";
 import { buildRequest, signToken } from "@/test/utils/api-request";
 import { makeObjectId, makeUser } from "@/test/utils/factories";
 import { buildQuery, getModelStubs, resetModelStubs } from "@/test/utils/model-mocks";
@@ -358,7 +359,7 @@ describe("POST /api/v1/caretakers", () => {
     return custodian;
   }
 
-  it("sends the invite with the stored verification token", async () => {
+  it("emails the invite link and stores only its fingerprint", async () => {
     const custodian = setupSuccessfulCreate();
     vi.mocked(sendInviteEmail).mockResolvedValue(true);
 
@@ -372,12 +373,15 @@ describe("POST /api/v1/caretakers", () => {
 
     expect(res.status).toBe(201);
     const createArgs = user.create.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(sendInviteEmail).toHaveBeenCalledWith(
+    const sentToken = vi.mocked(sendInviteEmail).mock.calls.at(-1)?.[3] as string;
+    expect(sendInviteEmail).toHaveBeenLastCalledWith(
       "new@care.co",
       "New Care",
       "caretaker",
-      createArgs.verificationToken,
+      sentToken,
     );
+    expect(createArgs.verificationToken).toBe(hashLinkToken(sentToken));
+    expect(createArgs.verificationToken).not.toBe(sentToken);
     expect((await json(res)).emailSent).toBe(true);
   });
 

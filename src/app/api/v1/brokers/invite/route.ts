@@ -9,6 +9,7 @@ import { BROKER_INVITE_TTL_MS, deliverBrokerInvite } from "@/lib/broker-invite";
 import { authorizeBroker, createCommissionAgreement } from "@/lib/brokers";
 import { encryptField } from "@/lib/crypto";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
+import { hashLinkToken } from "@/lib/link-tokens";
 import { connectToDatabase } from "@/lib/mongoose";
 import type { Role } from "@/lib/permissions";
 import { normalizeNationalId } from "@/lib/phone";
@@ -136,7 +137,7 @@ export async function POST(request: NextRequest) {
       nationalId: encryptedNationalId,
       isActive: false,
       isVerified: false,
-      verificationToken,
+      verificationToken: hashLinkToken(verificationToken),
       verificationTokenExpiry: inviteExpiresAt,
       userCode,
     }),

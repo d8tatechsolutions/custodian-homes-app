@@ -104,7 +104,7 @@ const VerifyForm = () => {
         throw new Error(data.error || "Failed to resend verification email");
       }
       setEmailSent(email);
-      toast.success("Verification email sent");
+      toast.success("Check your inbox");
     } catch (err) {
       toast.error("Resend failed", {
         description: err instanceof Error ? err.message : "Please try again later.",
@@ -174,7 +174,8 @@ const VerifyForm = () => {
 
           {emailSent && (
             <p className="text-xs text-muted-foreground">
-              A new link was sent to <strong>{emailSent}</strong>. Check your inbox.
+              If <strong>{emailSent}</strong> has an account that isn't confirmed yet, a new link is
+              on its way. Check your inbox.
             </p>
           )}
 

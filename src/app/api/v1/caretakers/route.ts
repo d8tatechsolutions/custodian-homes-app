@@ -7,6 +7,7 @@ import { readJsonBody } from "@/app/api/v1/_helpers";
 import { writeAuditEvent } from "@/lib/audit";
 import { authenticateSession } from "@/lib/auth-scope";
 import { sendInviteEmail } from "@/lib/email";
+import { hashLinkToken } from "@/lib/link-tokens";
 import { getManagedOwnerId, getStaffIdsForOwner } from "@/lib/managed-owner";
 import { maskEmail } from "@/lib/mask-email";
 import { connectToDatabase } from "@/lib/mongoose";
@@ -280,7 +281,7 @@ export async function POST(request: NextRequest) {
           name: displayName,
           phone,
           privileges,
-          verificationToken,
+          verificationToken: hashLinkToken(verificationToken),
           verificationTokenExpiry,
         },
       },
@@ -363,7 +364,7 @@ export async function POST(request: NextRequest) {
       privileges,
       isActive: false,
       isVerified: false,
-      verificationToken,
+      verificationToken: hashLinkToken(verificationToken),
       verificationTokenExpiry,
       userCode,
     }),

@@ -12,13 +12,20 @@ vi.mock("@/lib/email", () => ({
   isEmailConfigured: vi.fn().mockReturnValue(false),
   sendVerificationEmail: vi.fn(),
   sendPasswordResetEmail: vi.fn(),
+  sendAccountExistsEmail: vi.fn(),
 }));
 vi.mock("@/models/User", () => ({ User: getModelStubs().user }));
 vi.mock("@/models/Tenant", () => ({ Tenant: getModelStubs().tenant }));
 
 import { POST } from "@/app/api/auth/route";
 import { decryptField, isEncrypted } from "@/lib/crypto";
-import { isEmailConfigured, sendVerificationEmail } from "@/lib/email";
+import {
+  isEmailConfigured,
+  sendAccountExistsEmail,
+  sendPasswordResetEmail,
+  sendVerificationEmail,
+} from "@/lib/email";
+import { hashLinkToken } from "@/lib/link-tokens";
 import { resetAuthRateLimits } from "@/lib/rate-limit-auth";
 
 const { user, tenant: tenantStub } = getModelStubs();
@@ -93,22 +100,28 @@ describe("POST /api/auth — signup merge", () => {
     expect(preCreated.passwordHash).not.toBe("old-hash");
     expect(preCreated.save).toHaveBeenCalledTimes(1);
     expect(user.create).not.toHaveBeenCalled();
-    expect(sendVerificationEmail).toHaveBeenCalledWith(
-      "care@keja.co",
-      preCreated.verificationToken,
-      "New Name",
-    );
+    const sentToken = vi.mocked(sendVerificationEmail).mock.calls.at(-1)?.[1] as string;
+    expect(sendVerificationEmail).toHaveBeenLastCalledWith("care@keja.co", sentToken, "New Name");
+    // Only the fingerprint of the emailed token is stored.
+    expect(preCreated.verificationToken).toBe(hashLinkToken(sentToken));
+    expect(preCreated.verificationToken).not.toBe(sentToken);
   });
 
-  it("409 for an already registered active user", async () => {
-    user.findOne.mockResolvedValue({
+  it("an already registered email gets the new-account answer; its owner is emailed", async () => {
+    const registered = {
       _id: USER_ID,
       email: "care@keja.co",
+      name: "Care Taker",
       role: "caretaker",
       isActive: true,
       isVerified: true,
       managedByOwnerId: "",
-    });
+      passwordHash: "existing-hash",
+      save: vi.fn().mockResolvedValue(undefined),
+    };
+    user.findOne.mockResolvedValue(registered);
+    vi.mocked(isEmailConfigured).mockReturnValue(true);
+    vi.mocked(sendAccountExistsEmail).mockResolvedValue(true);
     const res = await POST(
       buildRequest("/api/auth", {
         method: "POST",
@@ -123,7 +136,13 @@ describe("POST /api/auth — signup merge", () => {
         },
       }),
     );
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(200);
+    expect((await json(res)).message).toMatch(/check your inbox/i);
+    expect(sendAccountExistsEmail).toHaveBeenLastCalledWith("care@keja.co", "Care Taker");
+    // The existing account is left exactly as it was.
+    expect(registered.passwordHash).toBe("existing-hash");
+    expect(registered.save).not.toHaveBeenCalled();
+    expect(user.create).not.toHaveBeenCalled();
   });
 
   it("400 when the mobile number is not valid E.164", async () => {
@@ -279,7 +298,8 @@ describe("POST /api/auth — verify-email", () => {
       buildRequest("/api/auth", { method: "POST", body: { action: "verify-email", token: "tok" } }),
     );
     const [filter] = user.findOne.mock.calls[0] as [Record<string, unknown>];
-    expect(filter.verificationToken).toBe("tok");
+    // New links are stored as a fingerprint; older plain-text links still match.
+    expect(filter.verificationToken).toEqual({ $in: [hashLinkToken("tok"), "tok"] });
     expect(filter.verificationTokenExpiry).toEqual({ $gt: expect.any(Date) });
   });
 });
@@ -539,19 +559,37 @@ describe("POST /api/auth — new users who have not confirmed their email", () =
     expect(body.email).toBeUndefined();
   });
 
-  it("signing up again points them to a new verification link instead of a dead end", async () => {
-    user.findOne.mockResolvedValue(await unverifiedUser());
+  it("signing up again emails them a fresh verification link, with the new-account answer", async () => {
+    const account = { ...(await unverifiedUser()), save: vi.fn().mockResolvedValue(undefined) };
+    const originalHash = account.passwordHash;
+    user.findOne.mockResolvedValue(account);
+    vi.mocked(isEmailConfigured).mockReturnValue(true);
+    vi.mocked(sendVerificationEmail).mockResolvedValue(true);
     const res = await signup();
-    expect(res.status).toBe(409);
-    expect((await json(res)).code).toBe("EMAIL_NOT_VERIFIED");
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.message).toMatch(/check your inbox/i);
+    expect(body.code).toBeUndefined();
+    const sentToken = vi.mocked(sendVerificationEmail).mock.calls.at(-1)?.[1] as string;
+    expect((account as Record<string, unknown>).verificationToken).toBe(hashLinkToken(sentToken));
+    expect(account.passwordHash).toBe(originalHash);
     expect(user.create).not.toHaveBeenCalled();
   });
 
-  it("a fully registered email still gets the plain 409", async () => {
+  it("a confirmed email gets the same answer as a brand-new one", async () => {
+    vi.mocked(isEmailConfigured).mockReturnValue(true);
+    vi.mocked(sendVerificationEmail).mockResolvedValue(true);
+    vi.mocked(sendAccountExistsEmail).mockResolvedValue(true);
+
+    user.findOne.mockResolvedValue(null);
+    user.create.mockResolvedValue({ _id: USER_ID });
+    const fresh = await signup();
+
     user.findOne.mockResolvedValue({ ...(await unverifiedUser()), isVerified: true });
-    const res = await signup();
-    expect(res.status).toBe(409);
-    expect((await json(res)).code).toBeUndefined();
+    const existing = await signup();
+
+    expect(existing.status).toBe(fresh.status);
+    expect(await json(existing)).toEqual(await json(fresh));
   });
 
   it("a mobile number already in use gets a clear 409, not a server error", async () => {
@@ -643,5 +681,102 @@ describe("POST /api/auth — reset-password", () => {
     expect(account.tokenVersion).toBe(4);
     expect(await bcrypt.compare("new-pass-123", account.passwordHash as string)).toBe(true);
     expect(account.save).toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/auth — resend and reset reveal nothing and keep links apart", () => {
+  beforeEach(() => {
+    resetModelStubs();
+    resetAuthRateLimits();
+  });
+
+  it("resend gives the same answer for an unknown, a confirmed and an unconfirmed email", async () => {
+    vi.mocked(isEmailConfigured).mockReturnValue(true);
+    vi.mocked(sendVerificationEmail).mockResolvedValue(true);
+    const ask = () =>
+      POST(
+        buildRequest("/api/auth", {
+          method: "POST",
+          body: { action: "resend-verification", email: "who@keja.co" },
+        }),
+      );
+
+    user.findOne.mockResolvedValue(null);
+    const unknown = await ask();
+    user.findOne.mockResolvedValue(mutableUser({ isVerified: true }));
+    const confirmed = await ask();
+    const pending = mutableUser({ isVerified: false });
+    user.findOne.mockResolvedValue(pending);
+    const unconfirmed = await ask();
+
+    for (const res of [unknown, confirmed, unconfirmed]) expect(res.status).toBe(200);
+    const bodies = await Promise.all([unknown, confirmed, unconfirmed].map(json));
+    expect(bodies[1]).toEqual(bodies[0]);
+    expect(bodies[2]).toEqual(bodies[0]);
+    // Only the unconfirmed account actually gets a link, stored as a fingerprint.
+    const sentToken = vi.mocked(sendVerificationEmail).mock.calls.at(-1)?.[1] as string;
+    expect((pending as Record<string, unknown>).verificationToken).toBe(hashLinkToken(sentToken));
+  });
+
+  it("forgot-password uses the reset field and leaves a pending verification link alone", async () => {
+    vi.mocked(isEmailConfigured).mockReturnValue(true);
+    vi.mocked(sendPasswordResetEmail).mockResolvedValue(true);
+    const account = mutableUser({
+      verificationToken: "pending-verification",
+      verificationTokenExpiry: new Date(Date.now() + 60_000),
+    }) as Record<string, unknown>;
+    user.findOne.mockResolvedValue(account);
+    const res = await POST(
+      buildRequest("/api/auth", {
+        method: "POST",
+        body: { action: "forgot-password", email: "tenant@keja.co" },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(account.verificationToken).toBe("pending-verification");
+    const sentToken = vi.mocked(sendPasswordResetEmail).mock.calls.at(-1)?.[1] as string;
+    expect(account.resetPasswordToken).toBe(hashLinkToken(sentToken));
+    expect(account.resetPasswordTokenExpiry).toBeInstanceOf(Date);
+  });
+
+  it("reset-password looks up the hashed reset link and clears it", async () => {
+    const account: Record<string, unknown> & { save: ReturnType<typeof vi.fn> } = mutableUser({
+      resetPasswordToken: hashLinkToken("reset-tok"),
+      verificationToken: "pending-verification",
+    });
+    user.findOne.mockResolvedValue(account);
+    const res = await POST(
+      buildRequest("/api/auth", {
+        method: "POST",
+        body: { action: "reset-password", token: "reset-tok", password: "brand-new-pass" },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const [filter] = user.findOne.mock.calls[0] as [Record<string, unknown>];
+    expect(filter.resetPasswordToken).toBe(hashLinkToken("reset-tok"));
+    expect(account.resetPasswordToken).toBeUndefined();
+    // A pending verification link is not touched by a reset.
+    expect(account.verificationToken).toBe("pending-verification");
+  });
+
+  it("a reset link sent before the change (plain, 1-hour window) still works once", async () => {
+    const account: Record<string, unknown> & { save: ReturnType<typeof vi.fn> } = mutableUser({
+      verificationToken: "old-reset-tok",
+    });
+    user.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(account);
+    const res = await POST(
+      buildRequest("/api/auth", {
+        method: "POST",
+        body: { action: "reset-password", token: "old-reset-tok", password: "brand-new-pass" },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const [legacyFilter] = user.findOne.mock.calls[1] as [Record<string, unknown>];
+    expect(legacyFilter.verificationToken).toBe("old-reset-tok");
+    expect(legacyFilter.verificationTokenExpiry).toEqual({
+      $gt: expect.any(Date),
+      $lte: expect.any(Date),
+    });
+    expect(account.verificationToken).toBeUndefined();
   });
 });

@@ -5,8 +5,14 @@ import { z } from "zod";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { getAppUrl } from "@/lib/brand";
 import { encryptField } from "@/lib/crypto";
-import { isEmailConfigured, sendPasswordResetEmail, sendVerificationEmail } from "@/lib/email";
+import {
+  isEmailConfigured,
+  sendAccountExistsEmail,
+  sendPasswordResetEmail,
+  sendVerificationEmail,
+} from "@/lib/email";
 import { getJwtSecret } from "@/lib/jwt";
+import { hashLinkToken, storedLinkTokenMatch } from "@/lib/link-tokens";
 import { connectToDatabase } from "@/lib/mongoose";
 import { isValidE164, isValidNationalId, normalizeNationalId } from "@/lib/phone";
 import { isProfileComplete } from "@/lib/profile-completion";
@@ -84,6 +90,18 @@ function duplicatePhoneResponse() {
     { status: 409 },
   );
 }
+
+/**
+ * What sign-up says once its email is out. The same words for a new address and
+ * for one that already has an account, so the form never reveals which emails
+ * are registered (the inbox owner is told in the email instead).
+ */
+const SIGNUP_SENT_MESSAGE =
+  "Check your inbox (and spam folder) for an email from us to finish setting up your account.";
+
+/** What resend says whether or not the email has an unconfirmed account. */
+const RESEND_SENT_MESSAGE =
+  "If this email has an account that isn't confirmed yet, a new verification link is on its way. Check your inbox (and spam folder).";
 
 /** A verification or reset token as it arrives from a link: plain text, never a query object. */
 function isLinkToken(value: unknown): value is string {
@@ -241,7 +259,7 @@ export async function POST(request: Request) {
           existing.isVerified = false;
           existing.phone = parsed.data.phone;
           existing.nationalId = encryptField(normalizeNationalId(parsed.data.nationalId));
-          existing.verificationToken = verificationToken;
+          existing.verificationToken = hashLinkToken(verificationToken);
           existing.verificationTokenExpiry = verificationTokenExpiry;
           try {
             await existing.save();
@@ -270,21 +288,36 @@ export async function POST(request: Request) {
           }
 
           return NextResponse.json({
-            message:
-              "Account created successfully! Please check your inbox (and spam folder) for the verification email to activate your account.",
+            message: SIGNUP_SENT_MESSAGE,
           });
         }
+        // Never reveal whether an email is registered: answer exactly as for a
+        // new sign-up and tell the inbox owner instead. The existing account
+        // (its password and details) is left as it is.
+        const accountLimited = await rateLimitAccount(email, "forgot-password");
+        if (accountLimited) return accountLimited;
+        let noticeSent: boolean;
         if (existing.isActive && !existing.isVerified) {
+          // Not confirmed yet: send a fresh verification link to the owner.
+          const freshToken = await generateVerificationToken();
+          existing.verificationToken = hashLinkToken(freshToken);
+          existing.verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          await existing.save();
+          noticeSent = isEmailConfigured()
+            ? await sendVerificationEmail(email, freshToken, existing.name || "there")
+            : false;
+        } else {
+          noticeSent = isEmailConfigured()
+            ? await sendAccountExistsEmail(email, existing.name || "there")
+            : false;
+        }
+        if (!noticeSent) {
           return NextResponse.json(
-            {
-              error:
-                "This email is already registered but not confirmed yet. Send a new verification link to finish.",
-              code: NOT_VERIFIED,
-            },
-            { status: 409 },
+            { error: "Failed to send verification email. Please try again later." },
+            { status: 500 },
           );
         }
-        return NextResponse.json({ error: "Email already registered" }, { status: 409 });
+        return NextResponse.json({ message: SIGNUP_SENT_MESSAGE });
       }
 
       const passwordHash = await bcrypt.hash(parsed.data.password, 12);
@@ -301,7 +334,7 @@ export async function POST(request: Request) {
             role: parsed.data.role,
             phone: parsed.data.phone,
             nationalId: encryptField(normalizeNationalId(parsed.data.nationalId)),
-            verificationToken,
+            verificationToken: hashLinkToken(verificationToken),
             verificationTokenExpiry,
             userCode,
           }),
@@ -330,8 +363,7 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json({
-        message:
-          "Account created successfully! Please check your inbox (and spam folder) for the verification email to activate your account.",
+        message: SIGNUP_SENT_MESSAGE,
       });
     }
 
@@ -344,7 +376,7 @@ export async function POST(request: Request) {
 
       await connectToDatabase();
       const user = await User.findOne({
-        verificationToken: token,
+        verificationToken: storedLinkTokenMatch(token),
         verificationTokenExpiry: { $gt: new Date() },
       });
       if (!user) {
@@ -403,16 +435,15 @@ export async function POST(request: Request) {
 
       await connectToDatabase();
       const user = await User.findOne({ email: normalizedEmail });
-      if (!user) {
-        return NextResponse.json({ error: "User not found" }, { status: 404 });
-      }
-      if (user.isVerified) {
-        return NextResponse.json({ error: "Email already verified" }, { status: 400 });
+      // Same answer for an unknown, an already confirmed and an unconfirmed
+      // email, so this form cannot be used to find out who has an account.
+      if (!user || user.isVerified) {
+        return NextResponse.json({ message: RESEND_SENT_MESSAGE });
       }
 
       const verificationToken = await generateVerificationToken();
       const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      user.verificationToken = verificationToken;
+      user.verificationToken = hashLinkToken(verificationToken);
       user.verificationTokenExpiry = verificationTokenExpiry;
       await user.save();
 
@@ -436,7 +467,7 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json({
-        message: "Verification email resent. Please check your inbox (and spam folder).",
+        message: RESEND_SENT_MESSAGE,
       });
     }
 
@@ -446,6 +477,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Email required" }, { status: 400 });
       }
       const normalizedEmail = String(email).trim().toLowerCase();
+
+      // Same per-email limit as resend, so one inbox cannot be flooded.
+      const accountLimited = await rateLimitAccount(normalizedEmail, "forgot-password");
+      if (accountLimited) return accountLimited;
 
       await connectToDatabase();
       const user = await User.findOne({ email: normalizedEmail });
@@ -458,8 +493,10 @@ export async function POST(request: Request) {
 
       const resetToken = await generateVerificationToken();
       const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-      user.verificationToken = resetToken;
-      user.verificationTokenExpiry = resetTokenExpiry;
+      // Its own field: asking for a reset no longer cancels a pending
+      // verification link. Only the fingerprint is stored.
+      user.resetPasswordToken = hashLinkToken(resetToken);
+      user.resetPasswordTokenExpiry = resetTokenExpiry;
       await user.save();
 
       const resetUrl = `${getAppUrl()}/auth/reset-password?token=${resetToken}`;
@@ -498,17 +535,33 @@ export async function POST(request: Request) {
       }
 
       await connectToDatabase();
-      const user = await User.findOne({
-        verificationToken: token,
-        verificationTokenExpiry: { $gt: new Date() },
+      const now = new Date();
+      let user = await User.findOne({
+        resetPasswordToken: hashLinkToken(token),
+        resetPasswordTokenExpiry: { $gt: now },
       });
+      // Reset links sent before resets had their own field were stored as plain
+      // text in the verification field with a 1-hour expiry: honour those until
+      // they expire. A 24-hour verification link cannot pass this window, except
+      // in its final hour, when it was emailed to the same inbox anyway.
+      const legacyLink = !user;
+      if (!user) {
+        user = await User.findOne({
+          verificationToken: token,
+          verificationTokenExpiry: { $gt: now, $lte: new Date(now.getTime() + 60 * 60 * 1000) },
+        });
+      }
       if (!user) {
         return NextResponse.json({ error: "Invalid or expired reset token" }, { status: 400 });
       }
 
       user.passwordHash = await bcrypt.hash(password, 12);
-      user.verificationToken = undefined;
-      user.verificationTokenExpiry = undefined;
+      user.resetPasswordToken = undefined;
+      user.resetPasswordTokenExpiry = undefined;
+      if (legacyLink) {
+        user.verificationToken = undefined;
+        user.verificationTokenExpiry = undefined;
+      }
       // A reset signs the account out everywhere: sessions opened before it stop working.
       user.tokenVersion = (user.tokenVersion ?? 0) + 1;
       await user.save();

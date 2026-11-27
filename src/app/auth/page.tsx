@@ -176,9 +176,8 @@ const AuthForm = () => {
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              We sent a verification link to{" "}
-              <strong className="text-foreground">{pendingEmail}</strong>. Open it to activate your
-              account — and check your spam folder if you can't find it.
+              We sent an email to <strong className="text-foreground">{pendingEmail}</strong> with
+              the next step. Open it to finish — and check your spam folder if you can't find it.
             </p>
           )}
           <Button

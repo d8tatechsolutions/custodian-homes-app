@@ -493,6 +493,41 @@ export async function sendPasswordResetEmail(
   });
 }
 
+function createAccountExistsContent(name: string, resetUrl: string): string {
+  return `
+    <p style="margin: 0 0 16px; font-size: 16px; color: ${TEXT_PRIMARY}; line-height: 1.6;">Hi <strong>${escapeHtml(name)}</strong>,</p>
+    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">Someone tried to create a ${BRAND.name} account with this email address. You already have an account, so no new one was created and nothing about your account was changed.</p>
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="{{APP_URL}}" style="display: inline-block; background: linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_COLOR_LIGHT} 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 10px; font-weight: 600; font-size: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-shadow: 0 4px 14px 0 rgba(20, 62, 107, 0.4);">Sign in</a>
+    </div>
+    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">Forgot your password? <a href="${resetUrl}" style="color: ${BRAND_COLOR}; font-weight: 600;">Reset it here</a>.</p>
+    <p style="margin: 24px 0 0; font-size: 14px; color: ${SECONDARY_COLOR}; line-height: 1.6;">If this wasn't you, you can safely ignore this email.</p>
+  `;
+}
+
+/**
+ * Sent when someone signs up with an email that already has an account. The
+ * sign-up form answers the same way as for a new address, so the form never
+ * reveals which emails are registered; the inbox owner hears about it here.
+ */
+export async function sendAccountExistsEmail(email: string, name: string): Promise<boolean> {
+  const appUrl = getAppUrl();
+  const signInUrl = `${appUrl}/auth`;
+  const resetUrl = `${appUrl}/auth/forgot-password`;
+  const html = renderTemplate(createAccountExistsContent(name, resetUrl), signInUrl, email);
+  const text =
+    `Hi ${name},\n\nSomeone tried to create a ${BRAND.name} account with this email address. You already have an account, so no new one was created and nothing about your account was changed.\n\n` +
+    `Sign in: ${signInUrl}\nForgot your password? Reset it here: ${resetUrl}\n\nIf this wasn't you, you can safely ignore this email.` +
+    createTextFooter(email);
+
+  return sendEmail({
+    to: email,
+    subject: uniqueSubject(`You already have an account - ${BRAND.name}`),
+    html,
+    text,
+  });
+}
+
 function inviteRoleCopy(role: string): string {
   return role === "caretaker"
     ? `You've been added as a caretaker at ${BRAND.name}. You can now help manage properties, tenants, and day-to-day operations once your account is active.`

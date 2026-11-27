@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { authenticateSession } from "@/lib/auth-scope";
 import { BROKER_INVITE_TTL_MS, deliverBrokerInvite } from "@/lib/broker-invite";
 import { isBrokerBidsEnabled } from "@/lib/feature-flags";
+import { hashLinkToken } from "@/lib/link-tokens";
 import { connectToDatabase } from "@/lib/mongoose";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { BrokerProfile } from "@/models/BrokerProfile";
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ us
   const expires = new Date(Date.now() + BROKER_INVITE_TTL_MS);
   await User.updateOne(
     { _id: userId },
-    { $set: { verificationToken: token, verificationTokenExpiry: expires } },
+    { $set: { verificationToken: hashLinkToken(token), verificationTokenExpiry: expires } },
   );
   const delivery = await deliverBrokerInvite({
     email: broker.email ?? "",
