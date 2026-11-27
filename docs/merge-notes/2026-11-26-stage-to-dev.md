@@ -112,11 +112,97 @@ Changes are additive wherever possible. The main ones:
   - Tests are in `api/auth/route.test.ts` ("new users who have not confirmed their email") and
     `auth/verify/page.test.tsx` (including a StrictMode case).
 
+## Security and stability audit (2026-11-27)
+
+Whole-system pass: every API route, the auth flow, payments, uploads, config and dependencies,
+plus every page rendered at phone (390px) and desktop (1280px) width for each role.
+Decisions marked *(client)* were approved by the client before the change.
+
+- **Account takeover (critical), `api/auth`:**
+  - `verify-email` and `reset-password` passed `token` from the body straight into
+    `User.findOne`. A body like `{"token": {"$ne": null}}` matched any account with a pending
+    link: it could verify and sign in as that account, or set its password.
+  - Both now accept text tokens only (`isLinkToken`). The new password must be text too (an
+    array used to crash bcrypt with a 500).
+  - Tests are under "link tokens must be text".
+- **Password reset signs out everywhere** *(client)*: a reset bumps `tokenVersion`.
+- **Revoked sessions kept working:**
+  - 50+ routes used the bare `authenticate()`, which reads the cookie only. After a
+    deactivation, role change or "sign out everywhere", the old token still worked there until
+    it expired, including admin commission payouts (pay/fail), broker verification, contact
+    messages, assignments, broker agreements, listings and uploads.
+  - They now use `authenticateSession()` (`lib/auth-scope.ts`), the same active-account and
+    `tokenVersion` check as `requirePermission`.
+  - It uses the per-request context cache, so a route that also calls `requirePermission`
+    makes no extra query.
+  - Route tests stub it to token-only. The real check is tested in `lib/auth-scope.test.ts`.
+- **Cross-site writes:**
+  - `proxy.ts` now runs `checkSameOrigin` on every `POST/PUT/PATCH/DELETE` to `/api/*`.
+  - 46 write routes had no origin check and relied only on the `SameSite=Lax` cookie.
+  - Payment callbacks, UploadThing and cron are exempt by path (`isMachinePath`, shared with
+    the bot guard). Server-to-server calls send no browser origin headers anyway.
+- **Malformed input:**
+  - 24 routes called `request.json()` without a catch, so bad JSON was a 500. They now use
+    `readJsonBody`, and their existing schema returns a 400.
+  - 11 `[id]` routes lacked an id check, so a malformed id was a 500 or leaked
+    "Cast to ObjectId failed". They now return 400 `Invalid id`.
+  - The public `marketplace/listings/[id]` returns 404 for a value that is neither a share code
+    nor an id.
+- **Listings create/update (`lib/listing-input.ts`):**
+  - Field types now follow the model's own rules.
+  - Updates skip model validation, so rent could be set to 0 or negative and an invalid
+    visibility saved. Both are refused now.
+  - `propertyId`/`unitId` must be ids, not query objects. `reason` is text only.
+- **Rate limiter** *(client)*:
+  - The general limiter shared one per-IP counter across 58 routes with different limits.
+  - Each route now has its own counter (`routeBucket`: method + path, ids collapsed). The
+    limits themselves are unchanged.
+- **Image optimizer** *(client)*:
+  - `images.remotePatterns` allowed any host, so anyone could use the project's image quota
+    as a proxy. It is now limited to `utfs.io`, `*.ufs.sh` and `images.unsplash.com`
+    (`lib/image-hosts.ts`).
+  - Images on other hosts render `unoptimized` instead of failing.
+- **Permissions** *(client)*:
+  - Brokers can read their own notifications. Bid answers, listing reviews and enquiries were
+    sent to them, but every notification route returned 403 and the bell failed on every
+    broker page.
+  - Staff with no assignment yet can read their own notifications and settings
+    (`SELF_ONLY_ACTIONS`). Property, tenant and money actions are still refused.
+- **Crash:** the system-admin Portfolio page crashed ("Application error") on a property
+  without an `images` field (Sunrise Apartments on dev). Three readers now fall back to the
+  placeholder.
+- **Mobile layout:**
+  - Shared tab bars and dialogs never exceed the screen. Tabs scroll sideways, and dialogs
+    scroll inside up to the screen height.
+  - The Accounting, Tenants, Portfolio and Units toolbars wrap on phones.
+  - The dashboard's mobile menu scrolls and has search (search was hidden below tablet width).
+  - Long page titles no longer push past the header.
+  - A rendered check of all pages found 0 overflowing pages, 0 crashes and 0 server errors.
+- **Broker dashboard:** the "needs your answer" dot was invisible (an inline span has no
+  size). It is fixed, with a screen-reader label.
+- **Dependencies:**
+  - `npm audit fix` (no breaking upgrades), lockfile only. shadcn CLI 4.21.0 → 4.23.1, plus
+    patch updates to vite and undici.
+  - Express is gone from the tree. It was an optional peer of UploadThing's Express adapter,
+    which the app doesn't use.
+  - 6 moderate advisories remain, all in UploadThing's `@effect/platform` (see below).
+
 ## Still open
 
 - UploadThing has no patched 7.x release for the current advisory, and private files need a
   paid plan. Task photos and receipts rely on unguessable links that are only returned to
   people allowed to see the task.
+- **Found but not changed (each would change behaviour; raise with the client first):**
+  - Verification and reset links are stored in plain text, so a database leak exposes the
+    pending links. Hashing them would invalidate links already sent.
+  - Verification and reset share one token field, so requesting a reset cancels a pending
+    verification link.
+  - `resend-verification` answers "User not found", which reveals whether an email is
+    registered. Sign-up reveals the same thing by design.
+  - The general rate limiter is in memory per server instance. On Vercel each instance counts
+    separately; the database-backed limiter covers sign-in and enquiries.
+  - The marketplace and broker listing detail pages were not rendered in the layout check:
+    the dev database has no live listing.
 
 ## Local `.env` note
 
