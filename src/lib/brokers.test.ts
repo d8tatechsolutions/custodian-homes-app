@@ -405,9 +405,9 @@ describe("Broker domain services", () => {
       expect(redacted.referenceCode).toBe("REF-123456");
       expect(redacted.unitHeadline).toBe("Deluxe 2BR");
       expect(redacted.status).toBe("approved");
-      expect((redacted as any).phone).toBeUndefined();
-      expect((redacted as any).nationalId).toBeUndefined();
-      expect((redacted as any).applicantName).toBeUndefined();
+      expect(redacted).not.toHaveProperty("phone");
+      expect(redacted).not.toHaveProperty("nationalId");
+      expect(redacted).not.toHaveProperty("applicantName");
     });
   });
 });

@@ -49,6 +49,7 @@ export interface TestProperty {
   beds: number;
   baths: number;
   area: number;
+  blocks?: Array<{ _id: string; [key: string]: unknown }>;
 }
 
 export interface TestTenant {

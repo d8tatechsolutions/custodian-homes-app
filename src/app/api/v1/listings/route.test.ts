@@ -1,6 +1,6 @@
 /** @vitest-environment node */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildRequest, signToken } from "@/test/utils/api-request";
+import { buildRequest, type ResponseJson, signToken } from "@/test/utils/api-request";
 import { makeObjectId, makeUser } from "@/test/utils/factories";
 import { buildQuery, getModelStubs, resetModelStubs } from "@/test/utils/model-mocks";
 
@@ -36,7 +36,7 @@ const PROPERTY_ID = makeObjectId("property");
 const UNIT_ID = makeObjectId("unit");
 
 async function json(res: Response) {
-  return (await res.json()) as Record<string, any>;
+  return (await res.json()) as ResponseJson;
 }
 
 describe("/api/v1/listings", () => {

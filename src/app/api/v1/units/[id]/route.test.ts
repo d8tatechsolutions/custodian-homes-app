@@ -60,7 +60,7 @@ describe("GET /api/v1/units/[id]", () => {
         makeProperty({
           _id: makeObjectId("prop"),
           blocks: [{ _id: makeObjectId("block") }],
-        } as any),
+        }),
       ),
     );
     managementAssignment.find.mockReturnValue(
@@ -102,7 +102,7 @@ describe("GET /api/v1/units/[id]", () => {
         makeProperty({
           _id: makeObjectId("prop"),
           blocks: [{ _id: makeObjectId("block") }],
-        } as any),
+        }),
       ),
     );
     managementAssignment.find.mockReturnValue(
@@ -178,9 +178,7 @@ describe("GET /api/v1/units/[id]", () => {
     );
     unit.findById.mockReturnValue(buildQuery(unitDoc({ propertyId: UNIT_PROPERTY_ID })));
     property.findOne.mockReturnValue(
-      buildQuery(
-        makeProperty({ _id: UNIT_PROPERTY_ID, blocks: [{ _id: makeObjectId("block") }] } as any),
-      ),
+      buildQuery(makeProperty({ _id: UNIT_PROPERTY_ID, blocks: [{ _id: makeObjectId("block") }] })),
     );
     managementAssignment.find.mockReturnValue(
       buildQuery([
@@ -214,7 +212,7 @@ describe("PATCH /api/v1/units/[id]", () => {
         makeProperty({
           _id: makeObjectId("prop"),
           blocks: [{ _id: makeObjectId("block") }],
-        } as any),
+        }),
       ),
     );
     managementAssignment.find.mockReturnValue(
@@ -450,7 +448,7 @@ describe("DELETE /api/v1/units/[id]", () => {
         makeProperty({
           _id: makeObjectId("prop"),
           blocks: [{ _id: makeObjectId("block") }],
-        } as any),
+        }),
       ),
     );
     managementAssignment.find.mockReturnValue(
