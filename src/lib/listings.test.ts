@@ -179,12 +179,12 @@ describe("listings domain service", () => {
       expect(projection.publisher?.shareCode).toBe("kj-abcdef1234");
 
       // Verify no leak of private fields
-      expect((projection as any).internalNotes).toBeUndefined();
-      expect((projection as any).canonicalPublisherUserId).toBeUndefined();
-      expect((projection.property as any).ownerId).toBeUndefined();
-      expect((projection.property as any).privateAccountNo).toBeUndefined();
-      expect((projection.unit as any).tenantId).toBeUndefined();
-      expect((projection.unit as any).billingAccountId).toBeUndefined();
+      expect(projection).not.toHaveProperty("internalNotes");
+      expect(projection).not.toHaveProperty("canonicalPublisherUserId");
+      expect(projection.property).not.toHaveProperty("ownerId");
+      expect(projection.property).not.toHaveProperty("privateAccountNo");
+      expect(projection.unit).not.toHaveProperty("tenantId");
+      expect(projection.unit).not.toHaveProperty("billingAccountId");
     });
   });
 

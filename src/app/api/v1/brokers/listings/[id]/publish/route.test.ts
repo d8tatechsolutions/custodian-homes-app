@@ -64,8 +64,12 @@ describe("/api/v1/brokers/listings/[id]/publish", () => {
         state: "active",
       }),
     );
-    brokerAuthorization.findOne.mockReturnValue(buildQuery({ _id: "6a0000000000000000000b01", status: "active" }));
-    commissionAgreement.findOne.mockReturnValue(buildQuery({ _id: "6a0000000000000000000a01", status: "active" }));
+    brokerAuthorization.findOne.mockReturnValue(
+      buildQuery({ _id: "6a0000000000000000000b01", status: "active" }),
+    );
+    commissionAgreement.findOne.mockReturnValue(
+      buildQuery({ _id: "6a0000000000000000000a01", status: "active" }),
+    );
 
     listingPublisher.findOne.mockReturnValue(buildQuery(null));
     listingPublisher.create.mockResolvedValue({ _id: "pub-1" });

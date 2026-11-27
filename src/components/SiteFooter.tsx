@@ -33,10 +33,10 @@ export const SiteFooter = () => {
             <p className="mt-4 text-sm text-muted-foreground">
               Support:{" "}
               <a
-                href={`mailto:${BRAND.emails.support}`}
+                href={`mailto:${BRAND.emails.info}`}
                 className="font-medium text-foreground hover:text-primary"
               >
-                {BRAND.emails.support}
+                {BRAND.emails.info}
               </a>
             </p>
           </div>

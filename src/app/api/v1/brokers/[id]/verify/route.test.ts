@@ -67,8 +67,12 @@ describe("/api/v1/brokers/[id]/verify", () => {
       buildQuery(makeUser({ _id: SYS_ADMIN_ID, role: "system-admin" })),
     );
     brokerProfile.findById
-      .mockReturnValueOnce(buildQuery({ _id: "6a0000000000000000000d01", userId: "u-1", status: "pending" }))
-      .mockReturnValueOnce(buildQuery({ _id: "6a0000000000000000000d01", userId: "u-1", status: "verified" }));
+      .mockReturnValueOnce(
+        buildQuery({ _id: "6a0000000000000000000d01", userId: "u-1", status: "pending" }),
+      )
+      .mockReturnValueOnce(
+        buildQuery({ _id: "6a0000000000000000000d01", userId: "u-1", status: "verified" }),
+      );
     brokerProfile.updateOne.mockResolvedValue({ modifiedCount: 1 });
 
     const res = await POST(

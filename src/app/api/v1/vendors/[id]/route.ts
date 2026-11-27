@@ -14,7 +14,10 @@ async function loadOwnVendor(request: NextRequest, id: string) {
   const actor = await catalogActor(request);
   if (actor instanceof NextResponse) return actor;
   if (actor.role !== "admin") {
-    return NextResponse.json({ error: "Only the owner can manage service providers" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Only the owner can manage service providers" },
+      { status: 403 },
+    );
   }
   if (!isValidObjectId(id))
     return NextResponse.json({ error: "Invalid service provider id" }, { status: 400 });

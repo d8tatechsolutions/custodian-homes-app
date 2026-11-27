@@ -489,8 +489,8 @@ describe("Attribution domain services", () => {
       expect(res.pagination.total).toBe(1);
       expect(res.prospects).toHaveLength(1);
       expect(res.prospects[0].referenceCode).toBe("REF-99AABB");
-      expect((res.prospects[0] as any).phone).toBeUndefined();
-      expect((res.prospects[0] as any).applicantName).toBeUndefined();
+      expect(res.prospects[0]).not.toHaveProperty("phone");
+      expect(res.prospects[0]).not.toHaveProperty("applicantName");
     });
   });
 });

@@ -162,7 +162,8 @@ async function main() {
   });
 
   console.log("⚠️  Wiping all collections...");
-  const db = mongoose.connection.db as any;
+  const db = mongoose.connection.db;
+  if (!db) throw new Error("Database connection is not ready");
   const collections = await db.listCollections().toArray();
   for (const c of collections) {
     await db.collection(c.name).deleteMany({});

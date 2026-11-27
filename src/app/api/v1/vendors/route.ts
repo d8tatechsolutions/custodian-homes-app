@@ -38,7 +38,10 @@ export async function POST(request: NextRequest) {
   const actor = await catalogActor(request);
   if (actor instanceof NextResponse) return actor;
   if (!canManageCatalog(actor) || actor.role !== "admin") {
-    return NextResponse.json({ error: "Only the owner can manage service providers" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Only the owner can manage service providers" },
+      { status: 403 },
+    );
   }
 
   const parsed = vendorInput.safeParse(await readJsonBody(request));

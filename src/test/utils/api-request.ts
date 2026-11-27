@@ -60,3 +60,13 @@ export function expiredToken(userId: string): string {
 export function withParams(id: string): { params: Promise<{ id: string }> } {
   return { params: Promise.resolve({ id }) };
 }
+
+/**
+ * A parsed JSON response body that tests can read at any depth
+ * (`body.listing.unit.name`, `body.data[0].headline`) without `any`.
+ * Every lookup is again a `ResponseJson`, so assertions compare the leaf
+ * values at runtime while the compiler still checks each access.
+ */
+export interface ResponseJson {
+  [key: string]: ResponseJson;
+}

@@ -41,8 +41,8 @@ export default function PrivacyPage() {
           <h2 className="font-display text-xl font-semibold text-foreground">Your rights</h2>
           <p>
             You may request access to or deletion of your data by contacting{" "}
-            <a href={`mailto:${BRAND.emails.support}`} className="text-primary hover:underline">
-              {BRAND.emails.support}
+            <a href={`mailto:${BRAND.emails.info}`} className="text-primary hover:underline">
+              {BRAND.emails.info}
             </a>
             .
           </p>
