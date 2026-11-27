@@ -1,12 +1,12 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { authenticateSession } from "@/lib/auth-scope";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { TENANT_SAFE_FIELDS, Tenant } from "@/models/Tenant";
 import { User } from "@/models/User";
 
 export async function GET(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   await connectToDatabase();

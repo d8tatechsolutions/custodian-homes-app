@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isDuplicateKeyError, readJsonBody } from "@/app/api/v1/_helpers";
 import { AssignmentError, type AssignmentView, grantAssignment } from "@/lib/assignments";
+import { authenticateSession } from "@/lib/auth-scope";
 import {
   type ActorContext,
   evaluateActorPolicy,
@@ -16,7 +17,6 @@ import {
   ASSIGNMENT_SCOPE_TYPES,
   ASSIGNMENT_STATUSES,
 } from "@/lib/domain-enums";
-import { authenticate } from "@/lib/permissions";
 import { loadPropertyResource } from "@/lib/policy-resources";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { ManagementAssignment } from "@/models/ManagementAssignment";
@@ -47,7 +47,7 @@ interface RouteActor {
 }
 
 async function resolveActor(request: NextRequest): Promise<RouteActor | NextResponse> {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const context = await loadActorContext(auth.userId);

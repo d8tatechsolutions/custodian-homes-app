@@ -15,6 +15,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ListingSourceLabel } from "@/components/brokers/ListingSourceLabel";
+import { UsdHint } from "@/components/money/Money";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +33,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { isOptimizableImage } from "@/lib/image-hosts";
 import type { PublicListingProjection } from "@/lib/listings";
 
 export default function ListingDetailPage() {
@@ -47,6 +50,12 @@ export default function ListingDetailPage() {
   const router = useRouter();
 
   const touchTokenKey = listing ? `attribution-touch:${listing.id}` : "";
+  // Broker share links carry a `brk_` code (in the path or as ?ref=).
+  const [sharedByBroker, setSharedByBroker] = useState(false);
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref") ?? "";
+    setSharedByBroker(String(id ?? "").startsWith("brk_") || ref.startsWith("brk_"));
+  }, [id]);
 
   useEffect(() => {
     if (!listing) return;
@@ -240,12 +249,25 @@ export default function ListingDetailPage() {
         {/* Gallery */}
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           <div className="relative aspect-[16/10] overflow-hidden rounded-2xl md:col-span-2">
-            <Image src={images[0]} alt={listing.headline} fill priority className="object-cover" />
+            <Image
+              src={images[0]}
+              unoptimized={!isOptimizableImage(images[0])}
+              alt={listing.headline}
+              fill
+              priority
+              className="object-cover"
+            />
           </div>
           <div className="grid grid-rows-2 gap-4">
             {images.slice(1, 3).map((img, i) => (
               <div key={i} className="relative aspect-[16/10] overflow-hidden rounded-2xl">
-                <Image src={img} alt="" fill className="object-cover" />
+                <Image
+                  src={img}
+                  unoptimized={!isOptimizableImage(img)}
+                  alt=""
+                  fill
+                  className="object-cover"
+                />
               </div>
             ))}
             {images.length <= 1 && (
@@ -345,6 +367,8 @@ export default function ListingDetailPage() {
                 </span>
                 <span className="text-sm text-muted-foreground">/ month</span>
               </div>
+              <UsdHint amount={listing.askingRent} />
+              <ListingSourceLabel broker={sharedByBroker} className="mt-2 block" />
 
               <div className="mt-6 space-y-3 border-t border-border pt-4 text-sm">
                 <div className="flex justify-between text-muted-foreground">

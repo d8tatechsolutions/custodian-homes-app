@@ -1,8 +1,18 @@
 /** @vitest-environment node */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { hashLinkToken } from "@/lib/link-tokens";
 import { buildRequest, signToken } from "@/test/utils/api-request";
 import { makeObjectId, makeUser } from "@/test/utils/factories";
 import { buildQuery, getModelStubs, resetModelStubs } from "@/test/utils/model-mocks";
+
+// These route tests stub the database per test. authenticateSession also checks the
+// account is active and the token is not revoked (covered in auth-scope.test.ts);
+// here it reads the token only, as the routes did before that check existed.
+vi.mock("@/lib/auth-scope", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth-scope")>();
+  const { authenticate } = await import("@/lib/permissions");
+  return { ...actual, authenticateSession: async (request: Request) => authenticate(request) };
+});
 
 vi.mock("@/lib/mongoose", () => ({
   connectToDatabase: vi.fn().mockResolvedValue(undefined),
@@ -110,7 +120,7 @@ describe("GET /api/v1/caretakers", () => {
       role: "caretaker",
       _id: { $in: [CARE_1] },
     });
-    expect(chain.select).toHaveBeenCalledWith("name email phone privileges userCode");
+    expect(chain.select).toHaveBeenCalledWith("name email phone privileges userCode staffTitle");
     expect(managementAssignment.aggregate).toHaveBeenCalled();
     const data = (await json(res)).data as Array<Record<string, unknown>>;
     expect(data).toHaveLength(2);
@@ -349,7 +359,7 @@ describe("POST /api/v1/caretakers", () => {
     return custodian;
   }
 
-  it("sends the invite with the stored verification token", async () => {
+  it("emails the invite link and stores only its fingerprint", async () => {
     const custodian = setupSuccessfulCreate();
     vi.mocked(sendInviteEmail).mockResolvedValue(true);
 
@@ -363,12 +373,15 @@ describe("POST /api/v1/caretakers", () => {
 
     expect(res.status).toBe(201);
     const createArgs = user.create.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(sendInviteEmail).toHaveBeenCalledWith(
+    const sentToken = vi.mocked(sendInviteEmail).mock.calls.at(-1)?.[3] as string;
+    expect(sendInviteEmail).toHaveBeenLastCalledWith(
       "new@care.co",
       "New Care",
       "caretaker",
-      createArgs.verificationToken,
+      sentToken,
     );
+    expect(createArgs.verificationToken).toBe(hashLinkToken(sentToken));
+    expect(createArgs.verificationToken).not.toBe(sentToken);
     expect((await json(res)).emailSent).toBe(true);
   });
 

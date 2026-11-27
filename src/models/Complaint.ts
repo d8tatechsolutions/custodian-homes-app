@@ -24,6 +24,15 @@ export interface IComplaint {
   resolution?: string;
   updatedById?: string;
   updatedByRole?: string;
+  /** Tasks raised for this complaint (Tasks & Maintenance v2). */
+  taskIds?: string[];
+  /** Tenant feedback once the work is done: "fixed" or "not_fixed" (reopens it). */
+  tenantConfirmation?: {
+    status: "none" | "fixed" | "not_fixed";
+    at?: Date | null;
+    note?: string;
+  };
+  reopenedCount?: number;
 }
 
 const complaintSchema = new Schema<IComplaint>(
@@ -40,6 +49,13 @@ const complaintSchema = new Schema<IComplaint>(
     resolution: { type: String },
     updatedById: { type: String },
     updatedByRole: { type: String },
+    taskIds: { type: [String], default: [] },
+    tenantConfirmation: {
+      status: { type: String, enum: ["none", "fixed", "not_fixed"], default: "none" },
+      at: { type: Date, default: null },
+      note: { type: String, trim: true, maxlength: 1000, default: "" },
+    },
+    reopenedCount: { type: Number, min: 0, default: 0 },
   },
   {
     timestamps: true,

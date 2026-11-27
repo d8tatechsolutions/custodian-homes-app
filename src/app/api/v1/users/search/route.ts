@@ -1,8 +1,9 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { authenticateSession } from "@/lib/auth-scope";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate, getAdminAssignmentScope } from "@/lib/permissions";
+import { getAdminAssignmentScope } from "@/lib/permissions";
 import { rateLimit } from "@/lib/rate-limit";
 import { resolveUserByContact } from "@/lib/user-identity";
 import { Property } from "@/models/Property";
@@ -12,7 +13,7 @@ const TEAM_ROLES = ["caretaker", "custodian"] as const;
 const STAFF_LOOKUP_ROLES = ["admin", "caretaker", "custodian", "system-admin"] as const;
 
 export async function GET(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

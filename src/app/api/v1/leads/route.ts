@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
   const authError = await requirePermission(request, "lead:manage");
   if (authError) return authError;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = leadInput.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

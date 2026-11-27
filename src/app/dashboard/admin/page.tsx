@@ -2,6 +2,7 @@
 
 import { Building2, Plus, TrendingUp, Users } from "lucide-react";
 import Link from "next/link";
+import { TitleCell } from "@/components/common/TitleCell";
 import { DashboardShell } from "@/components/DashboardShell";
 import { StatCard } from "@/components/StatCard";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +52,7 @@ const AdminDashboard = () => {
 
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={nav}
       title="Portfolio overview"
       subtitle="Your buildings, people, and performance at a glance."
@@ -195,7 +196,11 @@ const AdminDashboard = () => {
               ) : (
                 properties.map((p) => (
                   <TableRow key={p._id}>
-                    <TableCell className="font-medium">{p.title}</TableCell>
+                    <TableCell className="font-medium">
+                      <TitleCell href={`/dashboard/admin/portfolio/${p._id}/structure`}>
+                        {p.title}
+                      </TitleCell>
+                    </TableCell>
                     <TableCell className="capitalize text-muted-foreground">{p.type}</TableCell>
                     <TableCell className="text-muted-foreground">{p.location}</TableCell>
                     <TableCell>

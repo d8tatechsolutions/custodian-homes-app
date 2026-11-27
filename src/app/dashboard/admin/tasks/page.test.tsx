@@ -28,6 +28,13 @@ vi.mock("@/components/DashboardShell", async () => {
       createElement(Fragment, null, props.title, props.children),
   };
 });
+// Tasks v2 is behind a release flag; with it off the page is the legacy one under test.
+vi.mock("@/hooks/use-fx", () => ({
+  useReleaseFlags: () => ({
+    flags: { tasksV2: false, brokerBids: false, fxDisplay: false },
+    loading: false,
+  }),
+}));
 vi.mock("@/hooks/use-properties", () => ({ useProperties: mocks.useProperties }));
 vi.mock("@/hooks/use-caretakers", () => ({ useCaretakers: mocks.useCaretakers }));
 vi.mock("@/hooks/use-tasks", () => ({

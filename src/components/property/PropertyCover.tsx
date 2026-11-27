@@ -3,6 +3,7 @@
 import { Images } from "lucide-react";
 import Image from "next/image";
 import { type MouseEvent, useState } from "react";
+import { isOptimizableImage } from "@/lib/image-hosts";
 import { cn } from "@/lib/utils";
 
 const FALLBACK_IMAGE = "/images/property-1.jpg";
@@ -58,6 +59,7 @@ export const PropertyCover = ({
     <div className={cn("relative h-full w-full", className)} onMouseMove={handleMouseMove}>
       <Image
         src={src}
+        unoptimized={!isOptimizableImage(src)}
         alt={title}
         fill
         sizes={sizes}

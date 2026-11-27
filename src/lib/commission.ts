@@ -5,6 +5,8 @@ import type {
   CommissionAccrualStatus,
   CommissionBasis,
 } from "@/lib/domain-enums";
+import { getUsdKesRateOn } from "@/lib/fx";
+import { convertMinor } from "@/lib/fx-math";
 import { connectToDatabase } from "@/lib/mongoose";
 import { toMinorUnits } from "@/lib/payments/provider";
 import type { Role } from "@/lib/permissions";
@@ -323,6 +325,50 @@ export async function approveAccrual(actor: CommissionActor, accrualId: string) 
   return updated;
 }
 
+/**
+ * Payout totals in KES. Accruals agreed in USD are converted at the USD/KES
+ * rate on `on` (payout day); the USD amount, rate and date are returned for
+ * the payout record. KES-only input returns plain sums and no `fx`.
+ */
+async function kesPayoutTotals(
+  accruals: { grossMinor?: number; taxMinor?: number; netMinor?: number; currency?: string }[],
+  on = new Date(),
+): Promise<{
+  grossMinor: number;
+  taxMinor: number;
+  netMinor: number;
+  fx: { sourceCurrency: "USD"; sourceAmountMinor: number; rate: number; rateDate: string } | null;
+}> {
+  const isUsd = (a: { currency?: string }) =>
+    (a.currency || COMMISSION_CURRENCY).toUpperCase() === "USD";
+  const sum = (rows: typeof accruals, key: "grossMinor" | "taxMinor" | "netMinor") =>
+    rows.reduce((total, a) => total + (a[key] ?? 0), 0);
+  const kes = accruals.filter((a) => !isUsd(a));
+  const usd = accruals.filter(isUsd);
+  if (usd.length === 0) {
+    return {
+      grossMinor: sum(kes, "grossMinor"),
+      taxMinor: sum(kes, "taxMinor"),
+      netMinor: sum(kes, "netMinor"),
+      fx: null,
+    };
+  }
+  const quote = await getUsdKesRateOn(on.toISOString().slice(0, 10));
+  if (!quote) throw new Error("No USD/KES exchange rate is available to pay USD commission");
+  const toKes = (minor: number) => convertMinor(minor, "USD", "KES", quote.rate);
+  return {
+    grossMinor: sum(kes, "grossMinor") + toKes(sum(usd, "grossMinor")),
+    taxMinor: sum(kes, "taxMinor") + toKes(sum(usd, "taxMinor")),
+    netMinor: sum(kes, "netMinor") + toKes(sum(usd, "netMinor")),
+    fx: {
+      sourceCurrency: "USD",
+      sourceAmountMinor: sum(usd, "netMinor"),
+      rate: quote.rate,
+      rateDate: quote.effectiveDate,
+    },
+  };
+}
+
 export async function createPayoutBatch(
   actor: CommissionActor,
   brokerUserId: string,
@@ -345,9 +391,11 @@ export async function createPayoutBatch(
     throw new Error("No approved commission accruals are ready for payout");
   }
 
-  const grossMinor = accruals.reduce((sum, a) => sum + (a.grossMinor ?? 0), 0);
-  const taxMinor = accruals.reduce((sum, a) => sum + (a.taxMinor ?? 0), 0);
-  const netMinor = accruals.reduce((sum, a) => sum + (a.netMinor ?? 0), 0);
+  // USD-agreed commission is paid in KES: convert those accruals at today's
+  // rate (re-done at execution so the payout-day rate is what is paid).
+  // KES-only batches are unchanged.
+  const totals = await kesPayoutTotals(accruals);
+  const { grossMinor, taxMinor, netMinor } = totals;
 
   if (netMinor < commissionMinPayoutMinor()) {
     throw new Error("Payout total is below the configured minimum threshold");
@@ -361,10 +409,11 @@ export async function createPayoutBatch(
     grossMinor,
     taxMinor,
     netMinor,
-    currency: accruals[0].currency || COMMISSION_CURRENCY,
+    currency: totals.fx ? "KES" : accruals[0].currency || COMMISSION_CURRENCY,
     status: "approved",
     createdByUserId: actor.userId,
     approvedByUserId: actor.userId,
+    ...(totals.fx ? { fx: totals.fx } : {}),
   });
 
   const payoutDoc = (await CommissionPayout.findById(payout._id).lean()) as any;
@@ -409,6 +458,21 @@ export async function executePayout(
   }
 
   const paidAt = new Date();
+  // Payout-day conversion for USD-agreed commission (no-op for KES-only payouts).
+  let fxSet: Record<string, unknown> = {};
+  if (payout.fx?.sourceCurrency === "USD") {
+    const accruals = (await CommissionAccrual.find({
+      payoutId,
+      status: "approved",
+    }).lean()) as any[];
+    const totals = await kesPayoutTotals(accruals, paidAt);
+    fxSet = {
+      grossMinor: totals.grossMinor,
+      taxMinor: totals.taxMinor,
+      netMinor: totals.netMinor,
+      ...(totals.fx ? { fx: totals.fx } : {}),
+    };
+  }
   await CommissionPayout.updateOne(
     { _id: payoutId, status: "approved" },
     {
@@ -417,6 +481,7 @@ export async function executePayout(
         executedByUserId: actor.userId,
         paidAt,
         providerReference: providerReference || "",
+        ...fxSet,
       },
     },
   );

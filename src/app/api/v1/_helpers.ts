@@ -220,7 +220,7 @@ export async function resolveTenantIds(userId: string): Promise<string[]> {
   return tenantRows.map((t) => String(t._id));
 }
 
-export async function readJsonBody(request: NextRequest): Promise<unknown> {
+export async function readJsonBody(request: Request): Promise<unknown> {
   try {
     return (await request.json()) as unknown;
   } catch {

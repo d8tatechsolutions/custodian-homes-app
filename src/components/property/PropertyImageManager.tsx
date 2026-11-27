@@ -3,6 +3,7 @@
 import { ArrowLeft, ArrowRight, GripVertical, ImageOff, Star, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { type ReactNode, useRef } from "react";
+import { isOptimizableImage } from "@/lib/image-hosts";
 import {
   moveImage,
   parseImageUrls,
@@ -96,7 +97,14 @@ export const PropertyImageManager = ({
           className="group relative overflow-hidden rounded-xl border border-border bg-muted"
         >
           <div className="relative aspect-[4/3]">
-            <Image src={url} alt="" fill sizes="120px" className="object-cover" />
+            <Image
+              src={url}
+              unoptimized={!isOptimizableImage(url)}
+              alt=""
+              fill
+              sizes="120px"
+              className="object-cover"
+            />
           </div>
 
           <span className="absolute left-1 top-1 inline-flex items-center gap-0.5 rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground shadow-soft backdrop-blur">

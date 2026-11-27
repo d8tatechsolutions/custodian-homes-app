@@ -107,6 +107,13 @@ export interface AuthUser {
   tokenVersion?: number;
 }
 
+/** Actions whose routes only touch the caller's own rows (see requirePermission). */
+const SELF_ONLY_ACTIONS: ReadonlySet<Action> = new Set<Action>([
+  "notification:read-own",
+  "settings:read",
+  "settings:write",
+]);
+
 export function authenticate(request: Request): AuthUser | null {
   const cookieHeader = request.headers.get("cookie");
   const token = cookieHeader
@@ -253,6 +260,12 @@ export async function requirePermission(
   }
 
   if (user.role === "system-admin") return null;
+
+  // Self-only actions: every route behind them reads or changes only the
+  // caller's own rows (their notifications, their settings and profile). Any
+  // active account may use them, including staff not yet assigned to a property
+  // and brokers, who hold no assignments. Property data stays scoped below.
+  if (SELF_ONLY_ACTIONS.has(action)) return null;
 
   // Brokers hold no scoped assignments; grant only the chat actions so any
   // active role can initiate and answer a conversation.

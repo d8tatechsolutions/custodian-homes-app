@@ -4,6 +4,15 @@ import { buildRequest, signToken } from "@/test/utils/api-request";
 import { makeObjectId } from "@/test/utils/factories";
 import { buildQuery, getModelStubs, resetModelStubs } from "@/test/utils/model-mocks";
 
+// These route tests stub the database per test. authenticateSession also checks the
+// account is active and the token is not revoked (covered in auth-scope.test.ts);
+// here it reads the token only, as the routes did before that check existed.
+vi.mock("@/lib/auth-scope", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth-scope")>();
+  const { authenticate } = await import("@/lib/permissions");
+  return { ...actual, authenticateSession: async (request: Request) => authenticate(request) };
+});
+
 vi.mock("@/lib/mongoose", () => ({
   connectToDatabase: vi.fn().mockResolvedValue(undefined),
 }));
@@ -39,8 +48,8 @@ describe("/api/v1/brokers/listings/[id]/publish", () => {
 
   it("returns 401 when unauthenticated", async () => {
     const res = await POST(
-      buildRequest("/api/v1/brokers/listings/list-1/publish", { method: "POST" }),
-      { params: Promise.resolve({ id: "list-1" }) },
+      buildRequest("/api/v1/brokers/listings/6a0000000000000000000c01/publish", { method: "POST" }),
+      { params: Promise.resolve({ id: "6a0000000000000000000c01" }) },
     );
     expect(res.status).toBe(401);
   });
@@ -49,14 +58,14 @@ describe("/api/v1/brokers/listings/[id]/publish", () => {
     brokerProfile.findOne.mockReturnValue(buildQuery({ status: "verified" }));
     listing.findById.mockReturnValue(
       buildQuery({
-        _id: "list-1",
+        _id: "6a0000000000000000000c01",
         unitId: "u-1",
         propertyId: PROPERTY_ID,
         state: "active",
       }),
     );
-    brokerAuthorization.findOne.mockReturnValue(buildQuery({ _id: "auth-1", status: "active" }));
-    commissionAgreement.findOne.mockReturnValue(buildQuery({ _id: "agr-1", status: "active" }));
+    brokerAuthorization.findOne.mockReturnValue(buildQuery({ _id: "6a0000000000000000000b01", status: "active" }));
+    commissionAgreement.findOne.mockReturnValue(buildQuery({ _id: "6a0000000000000000000a01", status: "active" }));
 
     listingPublisher.findOne.mockReturnValue(buildQuery(null));
     listingPublisher.create.mockResolvedValue({ _id: "pub-1" });
@@ -70,15 +79,15 @@ describe("/api/v1/brokers/listings/[id]/publish", () => {
     );
 
     const res = await POST(
-      buildRequest("/api/v1/brokers/listings/list-1/publish", {
+      buildRequest("/api/v1/brokers/listings/6a0000000000000000000c01/publish", {
         method: "POST",
         token: signToken(BROKER_ID),
       }),
-      { params: Promise.resolve({ id: "list-1" }) },
+      { params: Promise.resolve({ id: "6a0000000000000000000c01" }) },
     );
 
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.shareUrl).toBe("/marketplace/list-1?ref=brk_test123");
+    expect(data.shareUrl).toBe("/marketplace/6a0000000000000000000c01?ref=brk_test123");
   });
 });

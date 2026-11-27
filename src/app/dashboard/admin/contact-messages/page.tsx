@@ -6,7 +6,7 @@ import { adminNav } from "@/config/dashboardNav";
 
 const AdminContactMessagesPage = () => (
   <DashboardShell
-    roleName="Admin"
+    roleName="Owner"
     nav={adminNav}
     title="Contact messages"
     subtitle="Inquiries submitted through the public contact form."

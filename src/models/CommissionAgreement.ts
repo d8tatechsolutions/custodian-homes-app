@@ -41,6 +41,8 @@ const commissionAgreementSchema = new Schema(
     terminatedByUserId: { type: String, default: "" },
     terminatedAt: { type: Date, default: null },
     terminationReason: { type: String, default: "" },
+    /** Set when the agreement came from an accepted broker bid. */
+    bidId: { type: String, default: "" },
   },
   { timestamps: true },
 );

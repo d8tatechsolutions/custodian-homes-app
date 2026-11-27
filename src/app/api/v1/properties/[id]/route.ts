@@ -2,6 +2,7 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { normalizeAmenities } from "@/lib/amenities";
 import { PROPERTY_PURPOSES } from "@/lib/domain-enums";
 import { getPropertyStaffIds } from "@/lib/managed-owner";
@@ -20,6 +21,7 @@ import {
   validatePropertyStaffAssignments,
 } from "@/lib/property-staff";
 import { isActivePropertyTypeKey } from "@/lib/property-type-store";
+import { isPropertyImageUrl, MAX_PROPERTY_IMAGES, PROPERTY_IMAGE_ERROR } from "@/lib/upload-rules";
 import { Property } from "@/models/Property";
 import { Tenant } from "@/models/Tenant";
 import { Unit } from "@/models/Unit";
@@ -33,7 +35,10 @@ const propertyUpdate = z.object({
   beds: z.coerce.number().int().nonnegative().optional(),
   baths: z.coerce.number().int().nonnegative().optional(),
   area: z.coerce.number().nonnegative().optional(),
-  images: z.array(z.string()).optional(),
+  images: z
+    .array(z.string().trim().refine(isPropertyImageUrl, PROPERTY_IMAGE_ERROR))
+    .max(MAX_PROPERTY_IMAGES, `Up to ${MAX_PROPERTY_IMAGES} photos`)
+    .optional(),
   amenities: z.array(z.string()).optional(),
   status: z.enum(["available", "occupied", "maintenance"]).optional(),
   dateCompleted: z.coerce.date().nullable().optional(),
@@ -132,7 +137,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   });
   if (authError) return authError;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = propertyUpdate.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

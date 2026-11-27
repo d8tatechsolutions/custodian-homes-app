@@ -3,8 +3,11 @@ import bcrypt from "bcryptjs";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { writeAuditEvent } from "@/lib/audit";
 import { sendInviteEmail } from "@/lib/email";
+import { hashLinkToken } from "@/lib/link-tokens";
+import { maskEmail } from "@/lib/mask-email";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
 import { getTenantScope, requirePermission } from "@/lib/permissions";
@@ -178,7 +181,7 @@ export async function POST(request: NextRequest) {
   const authError = await requirePermission(request, "tenant:manage");
   if (authError) return authError;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = tenantInput.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -328,7 +331,7 @@ export async function POST(request: NextRequest) {
             email,
             name: parsed.data.name,
             phone,
-            verificationToken,
+            verificationToken: hashLinkToken(verificationToken),
             verificationTokenExpiry,
           },
         },
@@ -337,7 +340,7 @@ export async function POST(request: NextRequest) {
       if (!inviteEmailSent) {
         console.error("[invite] Invitation email could not be sent", {
           role: "tenant",
-          recipient: email,
+          recipient: maskEmail(email),
         });
       }
     }
@@ -391,7 +394,7 @@ export async function POST(request: NextRequest) {
         role: "tenant",
         isActive: false,
         isVerified: false,
-        verificationToken,
+        verificationToken: hashLinkToken(verificationToken),
         verificationTokenExpiry,
         userCode,
       }),
@@ -401,7 +404,7 @@ export async function POST(request: NextRequest) {
     if (!inviteEmailSent) {
       console.error("[invite] Invitation email could not be sent", {
         role: "tenant",
-        recipient: email,
+        recipient: maskEmail(email),
       });
     }
   }

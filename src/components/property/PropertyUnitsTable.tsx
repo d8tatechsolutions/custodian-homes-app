@@ -5,6 +5,7 @@ import { DoorOpen, Loader2, Pencil, Trash2, UserMinus, UserPlus } from "lucide-r
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { TitleCell } from "@/components/common/TitleCell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -307,7 +308,27 @@ export function PropertyUnitsTable({
                         data-index={virtualRow.index}
                       >
                         <TableCell className="font-medium">
-                          <div>{unit.name}</div>
+                          <TitleCell
+                            detail={{
+                              title: unit.name,
+                              subtitle: effectivePurposeFor(unit),
+                              fields: [
+                                { label: "Block", value: unit.blockName },
+                                {
+                                  label: "Floor",
+                                  value:
+                                    unit.floorLabel ||
+                                    (unit.floorLevel === 0 ? "Ground" : String(unit.floorLevel)),
+                                },
+                                { label: "Status", value: unit.status },
+                                { label: "Bedrooms", value: seat(unit.beds) },
+                                { label: "Bathrooms", value: seat(unit.baths) },
+                                { label: "Rent", value: formatKES(effectiveFor(unit)) },
+                              ],
+                            }}
+                          >
+                            {unit.name}
+                          </TitleCell>
                           <div className="mt-0.5">
                             <Badge
                               variant="outline"

@@ -3,6 +3,7 @@
 import { Banknote, Building2, CheckCircle2, Download, Home, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
+import { OwnerReportSectionGate } from "@/components/reports/OwnerReportSection";
 import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { adminNav as nav } from "@/config/dashboardNav";
@@ -69,7 +70,7 @@ const AdminReportsPage = () => {
 
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={nav}
       title="Reports & Analytics"
       subtitle="Financial performance, occupancy metrics, and operational summaries."
@@ -151,6 +152,7 @@ const AdminReportsPage = () => {
           </div>
         </div>
       </div>
+      <OwnerReportSectionGate />
     </DashboardShell>
   );
 };

@@ -11,7 +11,7 @@ const AdminPropertyStructurePage = () => {
     <PropertyStructureView
       propertyId={id}
       nav={adminNav}
-      roleName="Admin"
+      roleName="Owner"
       backHref="/dashboard/admin/portfolio"
     />
   );

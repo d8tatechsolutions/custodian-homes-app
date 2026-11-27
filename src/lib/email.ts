@@ -1,6 +1,8 @@
 import { isIP } from "node:net";
 import nodemailer from "nodemailer";
 import { BRAND, getAppUrl } from "@/lib/brand";
+import { maskEmail, maskEmailsInText } from "@/lib/mask-email";
+import { roleLabel as displayRole } from "@/lib/role-labels";
 import { formatKES, formatPeriod } from "./format";
 
 /**
@@ -138,13 +140,15 @@ export interface EmailOptions {
 
 function logEmailSendFailure(options: EmailOptions, error: unknown): void {
   const details: Record<string, string> = {
-    recipient: options.to,
+    recipient: maskEmail(options.to),
     subject: options.subject,
   };
   if (error && typeof error === "object") {
     const smtpError = error as { code?: unknown; response?: unknown; command?: unknown };
     if (typeof smtpError.code === "string") details.code = smtpError.code;
-    if (typeof smtpError.response === "string") details.response = smtpError.response;
+    if (typeof smtpError.response === "string") {
+      details.response = maskEmailsInText(smtpError.response);
+    }
     if (typeof smtpError.command === "string") details.command = smtpError.command;
   }
   console.error("[email] Send failed", details);
@@ -152,7 +156,10 @@ function logEmailSendFailure(options: EmailOptions, error: unknown): void {
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
   if (!isEmailConfigured()) {
-    console.warn("[email] Skipping send for %s because SMTP is not configured.", options.to);
+    console.warn(
+      "[email] Skipping send for %s because SMTP is not configured.",
+      maskEmail(options.to),
+    );
     return false;
   }
 
@@ -297,7 +304,8 @@ function createPasswordResetContent(name: string): string {
 }
 
 function createWelcomeContent(name: string, role: string): string {
-  const roleLabel = escapeHtml(role.charAt(0).toUpperCase() + role.slice(1));
+  // Shown with the same names users see in the app (e.g. admin -> "Owner").
+  const roleLabel = escapeHtml(displayRole(role));
   return `
     <p style="margin: 0 0 16px; font-size: 16px; color: ${TEXT_PRIMARY}; line-height: 1.6;">Hi <strong>${escapeHtml(name)}</strong>,</p>
     <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">Welcome to ${BRAND.name}! Your email has been verified and your account is now active as a <strong>${roleLabel}</strong>.</p>
@@ -485,12 +493,49 @@ export async function sendPasswordResetEmail(
   });
 }
 
+function createAccountExistsContent(name: string, resetUrl: string): string {
+  return `
+    <p style="margin: 0 0 16px; font-size: 16px; color: ${TEXT_PRIMARY}; line-height: 1.6;">Hi <strong>${escapeHtml(name)}</strong>,</p>
+    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">Someone tried to create a ${BRAND.name} account with this email address. You already have an account, so no new one was created and nothing about your account was changed.</p>
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="{{APP_URL}}" style="display: inline-block; background: linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_COLOR_LIGHT} 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 10px; font-weight: 600; font-size: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-shadow: 0 4px 14px 0 rgba(20, 62, 107, 0.4);">Sign in</a>
+    </div>
+    <p style="margin: 0 0 24px; font-size: 15px; color: ${TEXT_SECONDARY}; line-height: 1.6;">Forgot your password? <a href="${resetUrl}" style="color: ${BRAND_COLOR}; font-weight: 600;">Reset it here</a>.</p>
+    <p style="margin: 24px 0 0; font-size: 14px; color: ${SECONDARY_COLOR}; line-height: 1.6;">If this wasn't you, you can safely ignore this email.</p>
+  `;
+}
+
+/**
+ * Sent when someone signs up with an email that already has an account. The
+ * sign-up form answers the same way as for a new address, so the form never
+ * reveals which emails are registered; the inbox owner hears about it here.
+ */
+export async function sendAccountExistsEmail(email: string, name: string): Promise<boolean> {
+  const appUrl = getAppUrl();
+  const signInUrl = `${appUrl}/auth`;
+  const resetUrl = `${appUrl}/auth/forgot-password`;
+  const html = renderTemplate(createAccountExistsContent(name, resetUrl), signInUrl, email);
+  const text =
+    `Hi ${name},\n\nSomeone tried to create a ${BRAND.name} account with this email address. You already have an account, so no new one was created and nothing about your account was changed.\n\n` +
+    `Sign in: ${signInUrl}\nForgot your password? Reset it here: ${resetUrl}\n\nIf this wasn't you, you can safely ignore this email.` +
+    createTextFooter(email);
+
+  return sendEmail({
+    to: email,
+    subject: uniqueSubject(`You already have an account - ${BRAND.name}`),
+    html,
+    text,
+  });
+}
+
 function inviteRoleCopy(role: string): string {
   return role === "caretaker"
     ? `You've been added as a caretaker at ${BRAND.name}. You can now help manage properties, tenants, and day-to-day operations once your account is active.`
     : role === "custodian"
       ? `You've been added as a custodian at ${BRAND.name}. You can now help manage properties and units on behalf of an owner once your account is active.`
-      : `You've been added as a tenant at ${BRAND.name}. You can now view your lease, invoices, and announcements once your account is active.`;
+      : role === "broker"
+        ? `You've been added as a verified broker at ${BRAND.name}. Once your account is active you can request to list properties, share listings and track your commissions.`
+        : `You've been added as a tenant at ${BRAND.name}. You can now view your lease, invoices, and announcements once your account is active.`;
 }
 
 function createInviteContent(name: string, role: string): string {
@@ -542,7 +587,7 @@ export async function sendWelcomeEmail(
   const content = createWelcomeContent(name, role);
   const html = renderTemplate(content, appUrl, email);
   const text =
-    `Hi ${name},\n\nWelcome to ${BRAND.name}! Your email has been verified and your account is now active as a ${role.charAt(0).toUpperCase() + role.slice(1)}.\n\n` +
+    `Hi ${name},\n\nWelcome to ${BRAND.name}! Your email has been verified and your account is now active as a ${displayRole(role)}.\n\n` +
     `You can now access your dashboard and start managing your properties, applications, and more: ${appUrl}/dashboard\n\n` +
     `If you have any questions, our support team is here to help.` +
     createTextFooter(email);

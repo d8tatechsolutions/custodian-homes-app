@@ -10,7 +10,15 @@ export type NotificationType =
   | "announcement"
   | "move-request:created"
   | "move-request:decided"
-  | "unit:available";
+  | "unit:available"
+  | "task:assigned"
+  | "task:reminder"
+  | "task:cost-approval"
+  | "task:cost-decided"
+  | "task:update"
+  | "broker:bid"
+  | "broker:listing"
+  | "listing:flagged";
 
 export type NotificationChannel = "in-app" | "email";
 

@@ -1,15 +1,20 @@
+import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { writeAuditEvent } from "@/lib/audit";
+import { authenticateSession } from "@/lib/auth-scope";
 import {
   assignBillingAccountToUnit,
   getOrCreateBillingAccountForOwner,
   resolveBillingAccountForUnit,
 } from "@/lib/billing-accounts";
+import { isBrokerBidsEnabled } from "@/lib/feature-flags";
+import { checkListingPhotos } from "@/lib/listing-fingerprint";
+import { listingFieldsError } from "@/lib/listing-input";
+import { isUploadedMediaList, LISTING_MEDIA_ERROR } from "@/lib/listing-media";
 import { transitionListingState, validateListingPublish } from "@/lib/listings";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { Lease } from "@/models/Lease";
 import { Listing } from "@/models/Listing";
 import { ListingPublisher } from "@/models/ListingPublisher";
@@ -59,7 +64,7 @@ async function verifyListingAccess(
 }
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -74,6 +79,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   }
 
   const { id } = await context.params;
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid listing id" }, { status: 400 });
+  }
   const listing = await Listing.findOne({ _id: id, deletedAt: null }).lean();
   if (!listing) {
     return NextResponse.json({ error: "Listing not found" }, { status: 404 });
@@ -99,7 +107,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -114,6 +122,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 
   const { id } = await context.params;
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid listing id" }, { status: 400 });
+  }
   const listing = await Listing.findOne({ _id: id, deletedAt: null }).lean();
   if (!listing) {
     return NextResponse.json({ error: "Listing not found" }, { status: 404 });
@@ -124,8 +135,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json();
-  const { action, reason } = body;
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  const { action } = body;
+  // Free-text note stored in the audit trail; anything else is ignored.
+  const reason = typeof body.reason === "string" ? body.reason : "";
   const userId = String(user._id);
 
   if (action) {
@@ -252,6 +268,15 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     return NextResponse.json({ error: "No updatable fields provided" }, { status: 400 });
   }
 
+  const fieldError = listingFieldsError(updates);
+  if (fieldError) {
+    return NextResponse.json({ error: fieldError }, { status: 400 });
+  }
+
+  if ("media" in updates && !isUploadedMediaList(updates.media)) {
+    return NextResponse.json({ error: LISTING_MEDIA_ERROR }, { status: 400 });
+  }
+
   const updatedListing = await Listing.findOneAndUpdate(
     { _id: id, version: listing.version },
     {
@@ -285,11 +310,20 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     after: { ...updates, version: updatedListing.version },
   });
 
+  // Fraud check on changed photos (never blocks the save).
+  if (isBrokerBidsEnabled() && "media" in updates) {
+    await checkListingPhotos({
+      listingId: id,
+      propertyId: listing.propertyId,
+      urls: (updatedListing.media ?? []).map((m: { url: string }) => m.url),
+    });
+  }
+
   return NextResponse.json({ listing: updatedListing });
 }
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -304,6 +338,9 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   }
 
   const { id } = await context.params;
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid listing id" }, { status: 400 });
+  }
   const listing = await Listing.findOne({ _id: id, deletedAt: null }).lean();
   if (!listing) {
     return NextResponse.json({ error: "Listing not found" }, { status: 404 });

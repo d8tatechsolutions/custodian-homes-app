@@ -16,6 +16,7 @@ import {
 import { useNotificationMutations } from "@/hooks/use-notifications";
 import { useUnreadCount } from "@/hooks/use-unread-count";
 import { relativeTime } from "@/lib/format";
+import { isInAppPath } from "@/lib/in-app-path";
 import { cn } from "@/lib/utils";
 import type { AppNotification } from "@/types/notifications";
 
@@ -36,6 +37,14 @@ const TYPE_LABELS: Record<AppNotification["type"], string> = {
   "move-request:created": "Move request",
   "move-request:decided": "Move request decided",
   "unit:available": "Unit available",
+  "task:assigned": "Task assigned",
+  "task:reminder": "Task reminder",
+  "task:cost-approval": "Approval needed",
+  "task:cost-decided": "Cost decision",
+  "task:update": "Maintenance update",
+  "broker:bid": "Broker request",
+  "broker:listing": "Broker listing",
+  "listing:flagged": "Listing flagged",
 };
 
 type BadgePropsVariant = "default" | "destructive" | "secondary" | "outline";
@@ -44,6 +53,7 @@ const typeVariant = (type: AppNotification["type"]): BadgePropsVariant => {
   switch (type) {
     case "invoice:overdue":
     case "lease:expiring":
+    case "listing:flagged":
       return "destructive";
     case "complaint:created":
     case "complaint:status-changed":
@@ -234,7 +244,7 @@ export const NotificationsList = () => {
                     )}
                     onClick={() => {
                       void handleMarkRead(notification._id);
-                      if (notification.link) void router.push(notification.link);
+                      if (isInAppPath(notification.link)) void router.push(notification.link);
                     }}
                   >
                     <TableCell className="font-medium text-muted-foreground">

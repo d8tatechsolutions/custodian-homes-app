@@ -1,20 +1,26 @@
 import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
+import { authenticateSession } from "@/lib/auth-scope";
+import { isBrokerBidsEnabled, isTasksV2Enabled } from "@/lib/feature-flags";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
+import { uploadRejection } from "@/lib/upload-rules";
 import { User } from "@/models/User";
 
 const f = createUploadthing();
+
+const TASK_UPLOAD_ROLES = new Set(["admin", "custodian", "caretaker", "system-admin"]);
 
 export const ourFileRouter = {
   propertyImages: f({
     image: { maxFileSize: "4MB", maxFileCount: 8, acl: "public-read" },
   })
-    .middleware(async ({ req }) => {
-      const auth = authenticate(req);
+    .middleware(async ({ req, files }) => {
+      const auth = await authenticateSession(req);
       if (!auth) {
         throw new UploadThingError("Unauthorized");
       }
+      const rejected = uploadRejection(files, { allowPdf: false });
+      if (rejected) throw new UploadThingError(rejected);
       // Re-verify against the database: the JWT alone would let a deactivated
       // account keep uploading until its 7-day token expires.
       await connectToDatabase();
@@ -37,6 +43,59 @@ export const ourFileRouter = {
         ufsUrl: file.ufsUrl,
       };
     }),
+
+  /**
+   * Task photos and documents (quotes, receipts). Staff only, flag-gated.
+   * Stored with unguessable links (UploadThing's free plan has no private
+   * files); links are only ever shown inside the app to people who may see
+   * the task.
+   */
+  taskMedia: f({
+    image: { maxFileSize: "4MB", maxFileCount: 3 },
+    pdf: { maxFileSize: "8MB", maxFileCount: 3 },
+  })
+    .middleware(async ({ req, files }) => {
+      if (!isTasksV2Enabled()) throw new UploadThingError("Not available");
+      const auth = await authenticateSession(req);
+      if (!auth) throw new UploadThingError("Unauthorized");
+      const rejected = uploadRejection(files, { allowPdf: true });
+      if (rejected) throw new UploadThingError(rejected);
+      await connectToDatabase();
+      const user = await User.findById(auth.userId).select("isActive role").lean();
+      if (!user?.isActive || !TASK_UPLOAD_ROLES.has(String(user.role))) {
+        throw new UploadThingError("Unauthorized");
+      }
+      return { uploadedBy: auth.userId };
+    })
+    .onUploadComplete(async ({ file, metadata }) => ({
+      uploadedBy: metadata.uploadedBy,
+      ufsUrl: file.ufsUrl,
+      key: file.key,
+      name: file.name,
+    })),
+
+  /** Photos and the owner's mandate letter for a broker's own listing. Brokers only, flag-gated. */
+  brokerListingMedia: f({
+    image: { maxFileSize: "4MB", maxFileCount: 10 },
+    pdf: { maxFileSize: "8MB", maxFileCount: 1 },
+  })
+    .middleware(async ({ req, files }) => {
+      if (!isBrokerBidsEnabled()) throw new UploadThingError("Not available");
+      const auth = await authenticateSession(req);
+      if (!auth) throw new UploadThingError("Unauthorized");
+      const rejected = uploadRejection(files, { allowPdf: true });
+      if (rejected) throw new UploadThingError(rejected);
+      await connectToDatabase();
+      const user = await User.findById(auth.userId).select("isActive role").lean();
+      if (!user?.isActive || user.role !== "broker") throw new UploadThingError("Unauthorized");
+      return { uploadedBy: auth.userId };
+    })
+    .onUploadComplete(async ({ file, metadata }) => ({
+      uploadedBy: metadata.uploadedBy,
+      ufsUrl: file.ufsUrl,
+      key: file.key,
+      name: file.name,
+    })),
 } satisfies FileRouter;
 
 export type OurFileRouter = typeof ourFileRouter;

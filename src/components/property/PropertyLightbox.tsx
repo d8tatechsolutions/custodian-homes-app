@@ -4,6 +4,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import Image from "next/image";
 import { type MouseEvent, useCallback, useEffect } from "react";
+import { isOptimizableImage } from "@/lib/image-hosts";
 import { cn } from "@/lib/utils";
 
 const FALLBACK_IMAGE = "/images/property-1.jpg";
@@ -110,6 +111,7 @@ export const PropertyLightbox = ({
             />
             <Image
               src={gallery[safeIndex] ?? FALLBACK_IMAGE}
+              unoptimized={!isOptimizableImage(gallery[safeIndex] ?? FALLBACK_IMAGE)}
               alt={`${title} — image ${safeIndex + 1}`}
               fill
               sizes="100vw"
@@ -152,7 +154,14 @@ export const PropertyLightbox = ({
                     i === safeIndex ? "ring-2 ring-white" : "opacity-60 hover:opacity-100",
                   )}
                 >
-                  <Image src={image} alt="" fill sizes="80px" className="object-cover" />
+                  <Image
+                    src={image}
+                    unoptimized={!isOptimizableImage(image)}
+                    alt=""
+                    fill
+                    sizes="80px"
+                    className="object-cover"
+                  />
                 </button>
               ))}
             </div>

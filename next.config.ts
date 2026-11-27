@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { OPTIMIZED_IMAGE_HOSTS } from "./src/lib/image-hosts";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -37,10 +38,10 @@ const nextConfig: NextConfig = {
     formats: ["image/avif", "image/webp"],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
     imageSizes: [16, 48, 96, 144, 192, 256, 384, 512],
-    remotePatterns: [
-      { protocol: "http", hostname: "**" },
-      { protocol: "https", hostname: "**" },
-    ],
+    // Only hosts the site really serves images from: uploads (UploadThing) and the
+    // Unsplash placeholder. An open pattern let anyone use the image optimizer as
+    // a free proxy on this project's quota.
+    remotePatterns: OPTIMIZED_IMAGE_HOSTS.map((host) => ({ ...host })),
   },
   async redirects() {
     return [
@@ -112,6 +113,11 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // Private areas are never indexed, even if a link to them leaks.
+      ...["/dashboard/:path*", "/api/:path*", "/auth/:path*", "/auth"].map((source) => ({
+        source,
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }],
+      })),
     ];
   },
 };

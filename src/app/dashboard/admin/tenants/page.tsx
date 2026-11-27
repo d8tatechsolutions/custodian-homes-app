@@ -4,7 +4,7 @@ import { TenantsManager } from "@/components/tenants/TenantsManager";
 import { adminNav } from "@/config/dashboardNav";
 
 const AdminTenantsPage = () => {
-  return <TenantsManager nav={adminNav} roleName="Admin" canSetStatus />;
+  return <TenantsManager nav={adminNav} roleName="Owner" canSetStatus />;
 };
 
 export default AdminTenantsPage;

@@ -14,6 +14,15 @@ const {
   assignBillingAccountToUnitMock: vi.fn(),
 }));
 
+// These route tests stub the database per test. authenticateSession also checks the
+// account is active and the token is not revoked (covered in auth-scope.test.ts);
+// here it reads the token only, as the routes did before that check existed.
+vi.mock("@/lib/auth-scope", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth-scope")>();
+  const { authenticate } = await import("@/lib/permissions");
+  return { ...actual, authenticateSession: async (request: Request) => authenticate(request) };
+});
+
 vi.mock("@/lib/mongoose", () => ({
   connectToDatabase: vi.fn().mockResolvedValue(undefined),
 }));
@@ -58,6 +67,33 @@ describe("/api/v1/listings/[id]", () => {
     getOrCreateBillingAccountForOwnerMock.mockReset();
     assignBillingAccountToUnitMock.mockReset();
     property.findById.mockReturnValue(buildQuery({ ownerId: "" }));
+  });
+
+  describe("invalid ids", () => {
+    it("rejects a malformed id with 400 on every method, without querying listings", async () => {
+      user.findById.mockReturnValue(buildQuery(makeUser({ _id: ADMIN_ID, role: "admin" })));
+      const params = { params: Promise.resolve({ id: "not-an-id" }) };
+      const token = signToken(ADMIN_ID);
+      const responses = [
+        await GET(buildRequest("/api/v1/listings/not-an-id", { token }), params),
+        await PATCH(
+          buildRequest("/api/v1/listings/not-an-id", {
+            method: "PATCH",
+            token,
+            body: { action: "pause" },
+          }),
+          { params: Promise.resolve({ id: "not-an-id" }) },
+        ),
+        await DELETE(buildRequest("/api/v1/listings/not-an-id", { method: "DELETE", token }), {
+          params: Promise.resolve({ id: "not-an-id" }),
+        }),
+      ];
+      for (const res of responses) {
+        expect(res.status).toBe(400);
+        expect((await json(res)).error).toBe("Invalid listing id");
+      }
+      expect(listing.findOne).not.toHaveBeenCalled();
+    });
   });
 
   describe("GET", () => {

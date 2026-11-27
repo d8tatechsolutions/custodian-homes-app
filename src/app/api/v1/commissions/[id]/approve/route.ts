@@ -1,13 +1,14 @@
 import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { authenticateSession } from "@/lib/auth-scope";
 import { approveAccrual } from "@/lib/commission";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate, type Role } from "@/lib/permissions";
+import type { Role } from "@/lib/permissions";
 import { User } from "@/models/User";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await context.params;

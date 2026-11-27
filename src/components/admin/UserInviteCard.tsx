@@ -30,7 +30,7 @@ const ROLE_LABELS: Record<string, string> = {
   caretaker: "Caretaker",
   custodian: "Custodian",
   owner: "Owner",
-  admin: "Admin",
+  admin: "Owner",
   broker: "Broker",
 };
 

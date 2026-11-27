@@ -1,6 +1,8 @@
+import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
 import { authenticate, getAdminAssignmentScope, requirePermission } from "@/lib/permissions";
@@ -14,6 +16,10 @@ const decideInput = z.object({
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
+
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
   if (!z.string().min(1).safeParse(id).success) {
     return NextResponse.json({ error: "Lead id is required" }, { status: 400 });
   }
@@ -72,6 +78,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
+
+  if (!isValidObjectId(id)) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
   if (!z.string().min(1).safeParse(id).success) {
     return NextResponse.json({ error: "Lead id is required" }, { status: 400 });
   }
@@ -79,7 +89,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const authError = await requirePermission(request, "lead:manage");
   if (authError) return authError;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = decideInput.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

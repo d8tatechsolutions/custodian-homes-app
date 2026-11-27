@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { TitleCell } from "@/components/common/TitleCell";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -56,11 +57,36 @@ export const InvoiceTable = ({ invoices, tenantNames, renderActions }: InvoiceTa
             return (
               <TableRow key={invoice._id}>
                 <TableCell className="font-medium">
-                  {invoice.invoiceNumber || (
-                    <span className="font-normal text-muted-foreground">
-                      Draft · number on issue
-                    </span>
-                  )}
+                  <TitleCell
+                    detail={{
+                      title: invoice.invoiceNumber || "Draft invoice",
+                      subtitle: formatPeriod(invoice.period),
+                      fields: [
+                        {
+                          label: "Tenant",
+                          value: tenantNames?.[invoice.tenantId] ?? invoice.tenantId,
+                        },
+                        { label: "Status", value: invoiceStatusLabel(invoice.status) },
+                        { label: "Amount due", value: formatKES(invoice.amountDue) },
+                        { label: "Rent", value: formatKES(rentAmount) },
+                        { label: "Service charge", value: formatKES(serviceFeeAmount) },
+                        { label: "Paid", value: formatKES(amountPaid) },
+                        { label: "Due date", value: formatDate(invoice.dueDate) },
+                        {
+                          label: "Issued",
+                          value: invoice.issuedAt ? formatDate(invoice.issuedAt) : "Not issued",
+                        },
+                        { label: "Payment ref", value: invoice.paymentReference ?? "" },
+                        { label: "Notes", value: invoice.notes ?? "" },
+                      ],
+                    }}
+                  >
+                    {invoice.invoiceNumber || (
+                      <span className="font-normal text-muted-foreground">
+                        Draft · number on issue
+                      </span>
+                    )}
+                  </TitleCell>
                   {invoice.paymentReference && (
                     <p className="text-xs font-normal text-muted-foreground">
                       Ref: {invoice.paymentReference}

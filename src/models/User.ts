@@ -22,6 +22,8 @@ export interface IUser {
   passwordHash: string;
   role: "tenant" | "caretaker" | "custodian" | "admin" | "broker" | "system-admin";
   privileges: string[];
+  /** Display title for staff: a caretaker marked "agent" is shown as "Agent". */
+  staffTitle?: "" | "agent";
   isActive: boolean;
   isVerified: boolean;
   phone: string;
@@ -29,6 +31,9 @@ export interface IUser {
   nationalId: string;
   verificationToken?: string;
   verificationTokenExpiry?: Date;
+  /** SHA-256 of the password-reset link token (separate from email verification). */
+  resetPasswordToken?: string;
+  resetPasswordTokenExpiry?: Date;
   /**
    * Monotonic session version. Bumped whenever the account's role or security
    * posture changes; JWTs carrying an older value are rejected so a role change
@@ -82,6 +87,9 @@ const userSchema = new Schema<IUser>(
       ],
       default: [],
     },
+    // Caretakers who manage a property for its owner are shown as "Agent"
+    // (same permissions as a caretaker; label only).
+    staffTitle: { type: String, enum: ["", "agent"], default: "" },
     isActive: { type: Boolean, default: true },
     isVerified: { type: Boolean, default: false },
     // Mobile number in E.164 form, e.g. "+254712345678" (country code included).
@@ -93,6 +101,8 @@ const userSchema = new Schema<IUser>(
     nationalId: { type: String, trim: true, default: "" },
     verificationToken: { type: String },
     verificationTokenExpiry: { type: Date },
+    resetPasswordToken: { type: String },
+    resetPasswordTokenExpiry: { type: Date },
     tokenVersion: { type: Number, default: 0 },
     invoiceCounters: { type: Schema.Types.Map, of: Number, default: {} },
     migratedFromOwner: { type: Boolean, default: false },
@@ -104,6 +114,9 @@ const userSchema = new Schema<IUser>(
 );
 
 userSchema.index({ role: 1, isActive: 1 });
+// Email-link lookups (verify, invite, reset). Sparse: only accounts with a pending link.
+userSchema.index({ verificationToken: 1 }, { sparse: true });
+userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
 userSchema.index({ phone: 1 }, { unique: true, partialFilterExpression: { phone: { $gt: "" } } });
 userSchema.index({ email: 1 }, { unique: true, sparse: true });
 // Partial (not sparse): the field must be genuinely absent on un-backfilled

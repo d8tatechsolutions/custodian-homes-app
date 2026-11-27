@@ -1,10 +1,14 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { authenticateSession } from "@/lib/auth-scope";
+import { isBrokerBidsEnabled } from "@/lib/feature-flags";
+import { checkListingPhotos } from "@/lib/listing-fingerprint";
+import { listingFieldsError, listingRefsError } from "@/lib/listing-input";
+import { isUploadedMediaList, LISTING_MEDIA_ERROR } from "@/lib/listing-media";
 import { generateListingShareCode } from "@/lib/listings";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
-import { authenticate } from "@/lib/permissions";
 import { Listing } from "@/models/Listing";
 import { ListingPublisher } from "@/models/ListingPublisher";
 import { ManagementAssignment } from "@/models/ManagementAssignment";
@@ -55,7 +59,7 @@ async function getAuthorizedPropertyIds(user: {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -115,7 +119,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -129,7 +133,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
   const {
     propertyId,
     blockId,
@@ -145,6 +152,15 @@ export async function POST(request: NextRequest) {
     media,
     visibility,
   } = body;
+
+  const fieldError = listingRefsError(body) ?? listingFieldsError(body);
+  if (fieldError) {
+    return NextResponse.json({ error: fieldError }, { status: 400 });
+  }
+
+  if (media !== undefined && !isUploadedMediaList(media)) {
+    return NextResponse.json({ error: LISTING_MEDIA_ERROR }, { status: 400 });
+  }
 
   if (!propertyId || !unitId || !headline || askingRent === undefined) {
     return NextResponse.json(
@@ -226,6 +242,15 @@ export async function POST(request: NextRequest) {
     startsAt: new Date(),
     createdByUserId: userId,
   });
+
+  // Fraud check: flag photos already used on another property (never blocks the save).
+  if (isBrokerBidsEnabled()) {
+    await checkListingPhotos({
+      listingId: String(listing._id),
+      propertyId,
+      urls: (listing.media ?? []).map((m: { url: string }) => m.url),
+    });
+  }
 
   return NextResponse.json(
     {

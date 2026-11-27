@@ -3,6 +3,7 @@
 import { CheckCircle2, Clock, FileText, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { TitleCell } from "@/components/common/TitleCell";
 
 import { DashboardShell } from "@/components/DashboardShell";
 import { SearchInput } from "@/components/SearchInput";
@@ -169,7 +170,28 @@ export function ApplicationsView({ nav, roleName, canDecide = true }: Props) {
             ) : (
               visible.map((a) => (
                 <TableRow key={a.id}>
-                  <TableCell className="font-medium">{a.propertyTitle || "—"}</TableCell>
+                  <TableCell className="font-medium">
+                    <TitleCell
+                      detail={{
+                        title: a.applicantName || "Application",
+                        subtitle: [a.propertyTitle, a.unitName].filter(Boolean).join(" · "),
+                        fields: [
+                          { label: "Property", value: a.propertyTitle || "" },
+                          { label: "Unit", value: a.unitName || "" },
+                          { label: "Applicant", value: a.applicantName },
+                          { label: "Email", value: a.applicantEmail },
+                          {
+                            label: "Submitted",
+                            value: a.submittedAt ? formatDate(a.submittedAt) : "",
+                          },
+                          { label: "Status", value: a.status },
+                          { label: "Message", value: a.message || "" },
+                        ],
+                      }}
+                    >
+                      {a.propertyTitle || "—"}
+                    </TitleCell>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{a.unitName || "—"}</TableCell>
                   <TableCell className="text-muted-foreground">{a.applicantName}</TableCell>
                   <TableCell className="text-muted-foreground">{a.applicantEmail}</TableCell>

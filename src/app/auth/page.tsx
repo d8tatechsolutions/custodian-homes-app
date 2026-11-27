@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/hooks/use-auth";
+import { AuthError, EMAIL_NOT_VERIFIED, useAuth } from "@/hooks/use-auth";
 import { BRAND } from "@/lib/brand";
 import { DEFAULT_COUNTRY, isValidE164, normalizeNationalId, toE164 } from "@/lib/phone";
 import { roleRoute } from "@/lib/role-routes";
@@ -36,7 +36,13 @@ const signUpSchema = z.object({
   password: z.string().min(8, "At least 8 characters"),
   role: z.enum(["tenant", "caretaker", "admin"]),
   phone: z.string().min(1, "Enter your mobile number"),
-  nationalId: z.string().min(4, "Enter your national ID number"),
+  nationalId: z
+    .string()
+    .min(4, "Enter your national ID number")
+    .refine(
+      (value) => /^[A-Z0-9]{4,32}$/.test(normalizeNationalId(value)),
+      "Use letters and numbers only (4–32 characters)",
+    ),
 });
 
 const INVITED_ROLES = ["tenant", "caretaker", "admin"] as const;
@@ -59,6 +65,8 @@ const AuthForm = () => {
   const [tab, setTab] = useState<"signin" | "signup">(isInvited ? "signup" : "signin");
   const [submitting, setSubmitting] = useState(false);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  /** "sent": a link just went out. "not-verified": the account is waiting on an older link. */
+  const [pendingNotice, setPendingNotice] = useState<"sent" | "not-verified">("sent");
   const [resending, setResending] = useState(false);
   const [dial, setDial] = useState(DEFAULT_COUNTRY.dial);
 
@@ -84,8 +92,13 @@ const AuthForm = () => {
     try {
       const signedInUser = await signIn(values.identifier, values.password);
       router.push(roleRoute[signedInUser.role]);
-    } catch {
-      // Error handled by toast in hook
+    } catch (err) {
+      // Unconfirmed account: show the inbox panel so they can get a new link.
+      if (err instanceof AuthError && err.code === EMAIL_NOT_VERIFIED && err.email) {
+        setPendingNotice("not-verified");
+        setPendingEmail(err.email);
+      }
+      // Other errors are shown by the hook's toast.
     } finally {
       setSubmitting(false);
     }
@@ -103,9 +116,14 @@ const AuthForm = () => {
         phone,
         nationalId: normalizeNationalId(values.nationalId),
       });
+      setPendingNotice("sent");
       setPendingEmail(values.email);
-    } catch {
-      // Error handled by toast in hook
+    } catch (err) {
+      if (err instanceof AuthError && err.code === EMAIL_NOT_VERIFIED) {
+        setPendingNotice("not-verified");
+        setPendingEmail(values.email.trim().toLowerCase());
+      }
+      // Other errors are shown by the hook's toast.
     } finally {
       setSubmitting(false);
     }
@@ -116,6 +134,7 @@ const AuthForm = () => {
     setResending(true);
     try {
       await resendVerification(pendingEmail);
+      setPendingNotice("sent");
     } catch {
       // Error handled by toast in hook
     } finally {
@@ -141,7 +160,7 @@ const AuthForm = () => {
             ? `Sign in to continue to ${BRAND.name}.`
             : isInvited
               ? "You've been invited — finish setting up your account."
-              : "Join as a tenant, caretaker, or admin."
+              : "Join as a tenant, caretaker, or owner."
       }
     >
       {pendingEmail ? (
@@ -149,18 +168,28 @@ const AuthForm = () => {
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
             <MailCheck className="h-6 w-6 text-primary" />
           </span>
-          <p className="text-sm text-muted-foreground">
-            We sent a verification link to{" "}
-            <strong className="text-foreground">{pendingEmail}</strong>. Open it to activate your
-            account — and check your spam folder if you can't find it.
-          </p>
+          {pendingNotice === "not-verified" ? (
+            <p className="text-sm text-muted-foreground">
+              Your account for <strong className="text-foreground">{pendingEmail}</strong> isn't
+              confirmed yet. Send yourself a new verification link, then open it to finish. Links
+              expire after 24 hours.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              We sent an email to <strong className="text-foreground">{pendingEmail}</strong> with
+              the next step. Open it to finish — and check your spam folder if you can't find it.
+            </p>
+          )}
           <Button
-            variant="outline"
+            variant={pendingNotice === "not-verified" ? "default" : "outline"}
             className="w-full rounded-full"
             disabled={resending}
             onClick={onResend}
           >
-            {resending && <Loader2 className="h-4 w-4 animate-spin" />} Resend verification email
+            {resending && <Loader2 className="h-4 w-4 animate-spin" />}{" "}
+            {pendingNotice === "not-verified"
+              ? "Send a new verification link"
+              : "Resend verification email"}
           </Button>
           <Button
             variant="ghost"
@@ -318,7 +347,7 @@ const AuthForm = () => {
                   <SelectContent>
                     <SelectItem value="tenant">Tenant</SelectItem>
                     <SelectItem value="caretaker">Caretaker</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="admin">Owner</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

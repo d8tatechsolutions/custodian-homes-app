@@ -177,7 +177,7 @@ const TenantDashboard = () => {
                   location: p.location,
                   price: p.price,
                   description: p.description,
-                  images: p.images.length > 0 ? p.images : ["/images/property-1.jpg"],
+                  images: p.images?.length ? p.images : ["/images/property-1.jpg"],
                   amenities: p.amenities,
                   status: p.status,
                   published: p.published,

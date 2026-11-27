@@ -12,6 +12,8 @@ export interface AuthUser {
   name?: string;
   role: Role;
   privileges?: string[];
+  /** "agent" for a caretaker the owner marked as their managing agent. */
+  staffTitle?: string;
   managedByOwnerId?: string;
   /** Mobile number in E.164 form, e.g. "+254712345678". */
   phone?: string;
@@ -21,6 +23,26 @@ export interface AuthUser {
   nationalId?: string;
   /** Non-secret account identifier (`CXXXXXX`); shown as plain text, never masked. */
   userCode?: string;
+}
+
+/** Sign-in/sign-up failure with the server's machine-readable code, when it sent one. */
+export class AuthError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+    /** For EMAIL_NOT_VERIFIED: the address the new verification link goes to. */
+    readonly email?: string,
+  ) {
+    super(message);
+    this.name = "AuthError";
+  }
+}
+
+/** The account exists but its email was never confirmed. */
+export const EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
+
+function isNotVerified(err: unknown): boolean {
+  return err instanceof AuthError && err.code === EMAIL_NOT_VERIFIED;
 }
 
 export interface ProfilePatch {
@@ -105,8 +127,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         body: JSON.stringify({ action: "signin", identifier, password }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Sign in failed");
+        const data = await res.json().catch(() => ({}));
+        throw new AuthError(data.error || "Sign in failed", data.code, data.email);
       }
       const data = await res.json();
       const signedInUser = data.user as AuthUser;
@@ -115,8 +137,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       toast.success("Welcome back!");
       return signedInUser;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Sign in failed";
-      toast.error("Sign in failed", { description: message });
+      // The page shows the "check your inbox" panel for unconfirmed accounts.
+      if (!isNotVerified(err)) {
+        const message = err instanceof Error ? err.message : "Sign in failed";
+        toast.error("Sign in failed", { description: message });
+      }
       throw err;
     }
   };
@@ -143,13 +168,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Sign up failed");
+        const data = await res.json().catch(() => ({}));
+        throw new AuthError(data.error || "Sign up failed", data.code);
       }
-      toast.success("Account created!");
+      // Same words whether or not the email already had an account (see api/auth).
+      toast.success("Check your inbox");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Sign up failed";
-      toast.error("Sign up failed", { description: message });
+      if (!isNotVerified(err)) {
+        const message = err instanceof Error ? err.message : "Sign up failed";
+        toast.error("Sign up failed", { description: message });
+      }
       throw err;
     }
   };
@@ -165,7 +193,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const data = await res.json();
         throw new Error(data.error || "Failed to resend verification email");
       }
-      toast.success("Verification email sent");
+      toast.success("Check your inbox");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to resend verification email";
       toast.error("Resend failed", { description: message });

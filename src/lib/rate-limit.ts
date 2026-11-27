@@ -20,6 +20,17 @@ function cleanupExpired() {
 
 setInterval(cleanupExpired, 60_000);
 
+const ID_SEGMENT = /^(?:[0-9a-f]{24}|[0-9a-f-]{36})$/i;
+
+/** "POST /api/v1/tasks/:id/status": the route a request hit, without its ids. */
+export function routeBucket(request: Pick<NextRequest, "method" | "nextUrl">): string {
+  const path = request.nextUrl.pathname
+    .split("/")
+    .map((segment) => (ID_SEGMENT.test(segment) ? ":id" : segment))
+    .join("/");
+  return `${request.method} ${path}`;
+}
+
 // `x-forwarded-for` is only trustworthy when deployed behind a proxy that
 // overwrites it; IP-less requests fall back to a unique per-request key so they
 // never share (and exhaust) a common throttle bucket. Pass an explicit `key`
@@ -31,7 +42,9 @@ export async function rateLimit(
 ) {
   const { windowMs = 60_000, limit = 10, key } = options;
   const ip = request.headers.get("x-forwarded-for") ?? crypto.randomUUID();
-  const rateKey = key ?? `ratelimit:${ip}`;
+  // Each route (method + path, ids collapsed) keeps its own counter, so one
+  // route's traffic never uses up another route's limit.
+  const rateKey = key ?? `ratelimit:${ip}:${routeBucket(request)}`;
   const now = Date.now();
   const resetAt = now + windowMs;
 
@@ -62,10 +75,24 @@ export function rateLimitHeaders(response: NextResponse, remaining: number, rese
   return response;
 }
 
+/** The address this request was served on (a Vercel preview, www or the bare domain). */
+function servedOrigin(request: NextRequest): string | null {
+  try {
+    return request.nextUrl.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rejects cross-site writes. A request passes when its Origin is the configured app
+ * address or the address it was served on. A hostile page can't pass either test:
+ * the browser always sends that page's own origin.
+ */
 export function checkSameOrigin(request: NextRequest): NextResponse | null {
   const origin = request.headers.get("origin")?.replace(/\/+$/, "");
   const appOrigin = getAppUrl();
-  if (origin && origin !== appOrigin) {
+  if (origin && origin !== appOrigin && origin !== servedOrigin(request)) {
     return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
   }
   const secFetchSite = request.headers.get("sec-fetch-site");

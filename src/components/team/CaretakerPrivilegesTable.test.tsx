@@ -12,12 +12,15 @@ const mocks = vi.hoisted(() => {
     pendingId: null as string | null,
   };
   const updatePrivileges = vi.fn();
+  const setAgent = vi.fn();
   const toast = { success: vi.fn(), error: vi.fn() };
   return {
     list,
     flags,
     updatePrivileges,
+    setAgent,
     toast,
+    useUpdateCaretakerTitle: () => ({ setAgent, pendingId: null }),
     useCaretakers: () => ({
       caretakers: list,
       loading: flags.loading,
@@ -36,6 +39,7 @@ vi.mock("sonner", () => ({ toast: mocks.toast }));
 vi.mock("@/hooks/use-caretakers", () => ({
   useCaretakers: mocks.useCaretakers,
   useUpdateCaretakerPrivileges: mocks.useUpdateCaretakerPrivileges,
+  useUpdateCaretakerTitle: mocks.useUpdateCaretakerTitle,
 }));
 
 import { CaretakerPrivilegesTable } from "@/components/team/CaretakerPrivilegesTable";
@@ -60,6 +64,7 @@ describe("CaretakerPrivilegesTable", () => {
     mocks.toast.success.mockClear();
     mocks.toast.error.mockClear();
     mocks.updatePrivileges.mockReset();
+    mocks.setAgent.mockReset();
   });
 
   it("renders one switch per configurable privilege (manage_invoices is not exposed)", () => {
@@ -189,5 +194,36 @@ describe("CaretakerPrivilegesTable", () => {
   it("shows the empty state", () => {
     render(<CaretakerPrivilegesTable />);
     expect(screen.getByText("No caretakers yet")).toBeInTheDocument();
+  });
+  it("hides the agent column unless canSetAgent", () => {
+    mocks.list.push(...caretakerRows);
+    render(<CaretakerPrivilegesTable />);
+    expect(screen.queryByText("Managing agent")).not.toBeInTheDocument();
+  });
+
+  it("marks a caretaker as managing agent and shows the Agent badge", async () => {
+    mocks.list.push(...caretakerRows);
+    mocks.setAgent.mockResolvedValue("agent");
+    render(<CaretakerPrivilegesTable canSetAgent />);
+
+    expect(screen.getByText("Managing agent")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("switch", { name: /show amka as managing agent/i }));
+
+    expect(mocks.setAgent).toHaveBeenCalledWith("care-1", true);
+    expect(await screen.findByText("Agent")).toBeInTheDocument();
+    expect(mocks.toast.success).toHaveBeenCalled();
+  });
+
+  it("rolls back the agent switch when the update fails", async () => {
+    mocks.list.push(...caretakerRows);
+    mocks.setAgent.mockRejectedValue(new Error("Forbidden"));
+    render(<CaretakerPrivilegesTable canSetAgent />);
+
+    const toggle = screen.getByRole("switch", { name: /show amka as managing agent/i });
+    await userEvent.click(toggle);
+
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalled());
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByText("Agent")).not.toBeInTheDocument();
   });
 });

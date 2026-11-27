@@ -123,10 +123,10 @@ describe("UserRoleManager", () => {
     const aminaRow = screen.getByRole("row", { name: /amina otieno/i });
     const user = userEvent.setup();
     await user.click(within(aminaRow).getByRole("combobox"));
-    await user.click(await screen.findByRole("option", { name: "admin" }));
+    await user.click(await screen.findByRole("option", { name: "Owner" }));
 
     expect(
-      await screen.findByText(/change amina otieno from tenant to admin/i),
+      await screen.findByText(/change amina otieno from tenant to owner/i),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Confirm" }));
@@ -142,7 +142,8 @@ describe("UserRoleManager", () => {
     const aminaRow = screen.getByRole("row", { name: /amina otieno/i });
     const user = userEvent.setup();
     await user.click(within(aminaRow).getByRole("combobox"));
-    expect(await screen.findByRole("option", { name: "broker" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Broker" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Platform admin" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "system-admin" })).not.toBeInTheDocument();
   });
 
@@ -153,7 +154,7 @@ describe("UserRoleManager", () => {
     const aminaRow = screen.getByRole("row", { name: /amina otieno/i });
     const user = userEvent.setup();
     await user.click(within(aminaRow).getByRole("combobox"));
-    await user.click(await screen.findByRole("option", { name: "broker" }));
+    await user.click(await screen.findByRole("option", { name: "Broker" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(mocks.promoteUserRole).not.toHaveBeenCalled();

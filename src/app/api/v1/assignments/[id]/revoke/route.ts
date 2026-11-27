@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { AssignmentError, revokeAssignment } from "@/lib/assignments";
-import { authenticate } from "@/lib/permissions";
+import { authenticateSession } from "@/lib/auth-scope";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 
 const revokeInput = z.object({
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const originError = checkSameOrigin(request);
   if (originError) return originError;
 
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await context.params;

@@ -16,6 +16,33 @@ type VerifyState =
   | { status: "success"; redirectTo: string }
   | { status: "error"; message: string };
 
+type VerifyResult = { ok: boolean; data: { error?: string; redirectTo?: string } };
+
+/**
+ * A verification link works once: the first request uses the token up. If the
+ * page runs its effect twice (React does this in development; a double-click or
+ * re-mount can do it in production), a second request would fail and overwrite
+ * the success. Every run for the same token therefore shares one request.
+ */
+const verifyRequests = new Map<string, Promise<VerifyResult>>();
+
+function verifyOnce(token: string): Promise<VerifyResult> {
+  const existing = verifyRequests.get(token);
+  if (existing) return existing;
+  const request = fetch("/api/auth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "verify-email", token }),
+  })
+    .then(async (res) => ({ ok: res.ok, data: await res.json().catch(() => ({})) }))
+    .catch((error) => {
+      // Network failure: let a later attempt try again.
+      verifyRequests.delete(token);
+      throw error;
+    });
+  verifyRequests.set(token, request);
+  return request;
+}
 const VerifyForm = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -34,14 +61,9 @@ const VerifyForm = () => {
     let cancelled = false;
     const verify = async () => {
       try {
-        const res = await fetch("/api/auth", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "verify-email", token }),
-        });
-        const data = await res.json();
+        const { ok, data } = await verifyOnce(token);
         if (cancelled) return;
-        if (!res.ok) {
+        if (!ok) {
           setState({ status: "error", message: data.error || "Verification failed" });
           return;
         }
@@ -82,7 +104,7 @@ const VerifyForm = () => {
         throw new Error(data.error || "Failed to resend verification email");
       }
       setEmailSent(email);
-      toast.success("Verification email sent");
+      toast.success("Check your inbox");
     } catch (err) {
       toast.error("Resend failed", {
         description: err instanceof Error ? err.message : "Please try again later.",
@@ -152,7 +174,8 @@ const VerifyForm = () => {
 
           {emailSent && (
             <p className="text-xs text-muted-foreground">
-              A new link was sent to <strong>{emailSent}</strong>. Check your inbox.
+              If <strong>{emailSent}</strong> has an account that isn't confirmed yet, a new link is
+              on its way. Check your inbox.
             </p>
           )}
 

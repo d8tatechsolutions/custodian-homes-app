@@ -1,13 +1,13 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { authenticateSession } from "@/lib/auth-scope";
 import { connectToDatabase } from "@/lib/mongoose";
 import { parsePagination } from "@/lib/pagination";
-import { authenticate } from "@/lib/permissions";
 import { BrokerProfile } from "@/models/BrokerProfile";
 import { User } from "@/models/User";
 
 export async function GET(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -30,9 +30,15 @@ export async function GET(request: NextRequest) {
     query.status = statusParam;
   }
 
+  // Owners see the broker directory, never payout accounts or identity data;
+  // those stay with the platform (system-admin) for payouts and checks.
+  const hidden =
+    user.role === "system-admin"
+      ? "-nationalId"
+      : "-nationalId -payoutMethod -verificationNotes -suspensionReason -defaultCommission";
   const [total, profiles] = await Promise.all([
     BrokerProfile.countDocuments(query),
-    BrokerProfile.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    BrokerProfile.find(query).select(hidden).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
   ]);
 
   return NextResponse.json({

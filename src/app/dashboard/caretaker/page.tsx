@@ -2,6 +2,7 @@
 
 import { Building2, CheckCircle2, Clock, Users, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { TitleCell } from "@/components/common/TitleCell";
 import { DashboardShell } from "@/components/DashboardShell";
 import { StatCard } from "@/components/StatCard";
 import { Badge } from "@/components/ui/badge";
@@ -126,7 +127,19 @@ const CaretakerDashboard = () => {
               ) : (
                 reqs.map((t) => (
                   <TableRow key={t.id}>
-                    <TableCell className="font-medium">{t.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <TitleCell
+                        detail={{
+                          title: t.name,
+                          fields: [
+                            { label: "Email", value: t.email },
+                            { label: "Joined", value: t.joined },
+                          ],
+                        }}
+                      >
+                        {t.name}
+                      </TitleCell>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{t.email}</TableCell>
                     <TableCell className="text-muted-foreground">{t.joined}</TableCell>
                     <TableCell className="text-right space-x-2">

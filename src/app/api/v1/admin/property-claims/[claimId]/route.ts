@@ -17,8 +17,8 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { authenticateSession } from "@/lib/auth-scope";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { ManagementAssignment } from "@/models/ManagementAssignment";
 import { PropertyClaim } from "@/models/PropertyClaim";
 import { User } from "@/models/User";
@@ -80,7 +80,7 @@ export async function PATCH(
 
   await connectToDatabase();
 
-  const authUser = authenticate(request);
+  const authUser = await authenticateSession(request);
   if (!authUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

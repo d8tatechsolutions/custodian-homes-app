@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { SearchInput } from "@/components/SearchInput";
 import { StatCard } from "@/components/StatCard";
+import { TasksPageSwitch } from "@/components/tasks/TasksPageSwitch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -322,7 +323,7 @@ const CaretakerTasksPage = () => {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                placeholder="Any instructions or vendor details…"
+                placeholder="Any instructions or service provider details…"
               />
             </div>
           </div>
@@ -345,4 +346,18 @@ const CaretakerTasksPage = () => {
   );
 };
 
-export default CaretakerTasksPage;
+/** New hub when TASKS_V2_ENABLED is on; the page above is unchanged otherwise. */
+const TasksPage = () => {
+  const nav = useCaretakerNav();
+  return (
+    <TasksPageSwitch
+      viewerRole="caretaker"
+      roleName="Caretaker"
+      nav={nav}
+      basePath="/dashboard/caretaker/tasks"
+      Legacy={CaretakerTasksPage}
+    />
+  );
+};
+
+export default TasksPage;

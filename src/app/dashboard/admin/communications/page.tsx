@@ -14,7 +14,7 @@ const AdminCommunicationsPage = () => {
 
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={nav}
       title="Communications"
       subtitle="Message tenants and broadcast announcements across the portfolio."

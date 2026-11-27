@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useNotificationMutations, useNotifications } from "@/hooks/use-notifications";
 import { useUnreadCount } from "@/hooks/use-unread-count";
 import { relativeTime } from "@/lib/format";
+import { isInAppPath } from "@/lib/in-app-path";
 import { cn } from "@/lib/utils";
 import type { AppNotification } from "@/types/notifications";
 
@@ -69,7 +70,7 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
       }
     }
     onClose();
-    if (notification.link) router.push(notification.link);
+    if (isInAppPath(notification.link)) router.push(notification.link);
   };
 
   return (

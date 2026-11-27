@@ -5,14 +5,16 @@ import { ChevronDown, LogOut, Menu } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { findGroupForPath, groupNavItems } from "@/config/dashboardNav";
 import { useNavAccordion } from "@/contexts/NavAccordionContext";
 import { useAuth } from "@/hooks/use-auth";
+import { useReleaseFlags } from "@/hooks/use-fx";
 import { BRAND } from "@/lib/brand";
+import type { ReleaseFlags } from "@/lib/feature-flags";
 import { cn } from "@/lib/utils";
 import { Logo } from "./Logo";
 import { NotificationsBell } from "./NotificationsBell";
@@ -24,6 +26,8 @@ export interface DashNavItem {
   label: string;
   icon: LucideIcon;
   group?: string;
+  /** Only shown when this release flag is on (see `lib/feature-flags.ts`). */
+  releaseFlag?: keyof ReleaseFlags;
 }
 
 interface Props {
@@ -36,10 +40,26 @@ interface Props {
 
 type Surface = "desktop" | "mobile";
 
-export const DashboardShell = ({ roleName, nav, title, subtitle, children }: Props) => {
+export const DashboardShell = ({
+  roleName: roleNameProp,
+  nav: allNav,
+  title,
+  subtitle,
+  children,
+}: Props) => {
+  const { flags } = useReleaseFlags();
+  const nav = useMemo(
+    () => allNav.filter((item) => !item.releaseFlag || flags[item.releaseFlag]),
+    [allNav, flags],
+  );
   const pathname = usePathname();
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
+  // A caretaker the owner marked as their managing agent is shown as "Agent".
+  const roleName =
+    roleNameProp === "Caretaker" && user?.role === "caretaker" && user.staffTitle === "agent"
+      ? "Agent"
+      : roleNameProp;
   const { openGroup, setOpenGroup } = useNavAccordion();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -211,7 +231,7 @@ export const DashboardShell = ({ roleName, nav, title, subtitle, children }: Pro
 
         <main className="flex-1 min-w-0">
           <div className="mb-8 flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
+            <div className="flex min-w-0 items-start gap-3">
               <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
                 <SheetTrigger asChild>
                   <Button
@@ -223,13 +243,15 @@ export const DashboardShell = ({ roleName, nav, title, subtitle, children }: Pro
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-[80%] max-w-xs p-0">
+                <SheetContent side="left" className="w-[80%] max-w-xs overflow-y-auto p-0">
                   <SheetHeader className="border-b border-border p-5 text-left">
                     <SheetTitle asChild>
                       <Logo />
                     </SheetTitle>
                   </SheetHeader>
                   <div className="px-3 py-4">
+                    {/* Search is in the header from tablet width up; on phones it lives here. */}
+                    <SearchBar className="mb-4 max-w-none md:hidden" />
                     <div className="mb-3 px-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
                       {roleName}
                     </div>
@@ -237,8 +259,8 @@ export const DashboardShell = ({ roleName, nav, title, subtitle, children }: Pro
                   </div>
                 </SheetContent>
               </Sheet>
-              <div>
-                <h1 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">
+              <div className="min-w-0">
+                <h1 className="break-words font-display text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
                   {title}
                 </h1>
                 {subtitle && <p className="mt-1 text-muted-foreground">{subtitle}</p>}

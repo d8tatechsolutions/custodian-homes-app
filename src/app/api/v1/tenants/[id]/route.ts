@@ -2,6 +2,7 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { writeAuditEvent } from "@/lib/audit";
 import { connectToDatabase } from "@/lib/mongoose";
 import { asSoftDeleteModel } from "@/lib/mongoose-soft-delete";
@@ -63,7 +64,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   if (scoped instanceof NextResponse) return scoped;
   const { tenant, scope } = scoped;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = tenantUpdate.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

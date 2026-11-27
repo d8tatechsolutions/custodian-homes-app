@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { normalizeAmenities } from "@/lib/amenities";
 import { DEFAULT_PROPERTY_PURPOSE, PROPERTY_PURPOSES } from "@/lib/domain-enums";
 import { normalizeUnitDuplex, normalizeUpperFloorMode } from "@/lib/duplex-layout";
@@ -25,6 +26,7 @@ import {
 import { isActivePropertyTypeKey } from "@/lib/property-type-store";
 import { blockInput, MAX_UNITS_PER_PROPERTY } from "@/lib/schemas/structure";
 import { buildUnitInserts, countRequestedUnits, validateBlockLayouts } from "@/lib/units";
+import { isPropertyImageUrl, MAX_PROPERTY_IMAGES, PROPERTY_IMAGE_ERROR } from "@/lib/upload-rules";
 import { Block } from "@/models/Block";
 import { ManagementAssignment } from "@/models/ManagementAssignment";
 import { Property } from "@/models/Property";
@@ -81,7 +83,10 @@ const propertyInput = z.object({
   beds: z.coerce.number().int().nonnegative(),
   baths: z.coerce.number().int().nonnegative(),
   area: z.coerce.number().nonnegative().optional(),
-  images: z.array(z.string()).optional(),
+  images: z
+    .array(z.string().trim().refine(isPropertyImageUrl, PROPERTY_IMAGE_ERROR))
+    .max(MAX_PROPERTY_IMAGES, `Up to ${MAX_PROPERTY_IMAGES} photos`)
+    .optional(),
   amenities: z.array(z.string()).optional(),
   status: z.enum(["available", "occupied", "maintenance"]).optional(),
   dateCompleted: z.coerce.date().nullable().optional(),
@@ -111,7 +116,7 @@ export async function GET(request: NextRequest) {
   const publicListing = async () => {
     const available = await Promise.all([
       Property.find({ status: "available", published: true })
-        .select("-ownerId -createdById -__v")
+        .select("-ownerId -createdById -caretakerIds -__v")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -236,7 +241,7 @@ export async function POST(request: NextRequest) {
   const authError = await requirePermission(request, "property:create");
   if (authError) return authError;
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = propertyInput.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

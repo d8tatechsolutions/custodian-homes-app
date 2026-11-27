@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { TitleCell } from "@/components/common/TitleCell";
 
 import { DashboardShell } from "@/components/DashboardShell";
 import { SearchInput } from "@/components/SearchInput";
@@ -329,7 +330,7 @@ export function UnitsView({ nav, roleName, canManage = true }: Props) {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Select
             value={statusFilter}
             onValueChange={(v) => setStatusFilter(v as "all" | UnitStatus)}
@@ -350,7 +351,7 @@ export function UnitsView({ nav, roleName, canManage = true }: Props) {
             value={query}
             onChange={setQuery}
             placeholder="Search units…"
-            className="w-56"
+            className="min-w-0 flex-1 sm:w-56 sm:flex-none"
           />
           <span className="text-sm text-muted-foreground">{filtered.length} units</span>
         </div>
@@ -403,7 +404,26 @@ export function UnitsView({ nav, roleName, canManage = true }: Props) {
                         data-index={virtualRow.index}
                       >
                         <TableCell className="font-medium">
-                          <div>{unit.name}</div>
+                          <TitleCell
+                            detail={{
+                              title: unit.name,
+                              subtitle: propertyById[unit.propertyId]?.title,
+                              fields: [
+                                { label: "Purpose", value: unitPurpose(unit) },
+                                { label: "Block", value: unit.blockName },
+                                {
+                                  label: "Floor",
+                                  value:
+                                    unit.floorLabel ||
+                                    (unit.floorLevel === 0 ? "Ground" : String(unit.floorLevel)),
+                                },
+                                { label: "Rent", value: `KES ${baseRent(unit).toLocaleString()}` },
+                                { label: "Status", value: unit.status },
+                              ],
+                            }}
+                          >
+                            {unit.name}
+                          </TitleCell>
                           <Badge
                             variant="outline"
                             className="mt-1 text-[10px] font-normal capitalize text-muted-foreground"

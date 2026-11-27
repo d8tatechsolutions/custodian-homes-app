@@ -2,11 +2,16 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { propertyTitleMap, readJsonBody, resolveDashboardActor } from "@/app/api/v1/_helpers";
+import { isTasksV2Enabled } from "@/lib/feature-flags";
+import { loadTaskLocation } from "@/lib/maintenance/location-loader";
+import { serializeTaskV2, type TaskDoc } from "@/lib/maintenance/route-helpers";
 import { connectToDatabase } from "@/lib/mongoose";
 import { requirePermission } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
+import { taskV2UpdateFields } from "@/lib/schemas/maintenance";
 import { taskUpdate } from "@/lib/schemas/task";
 import { serializeTask } from "@/lib/tasks";
+import { Complaint } from "@/models/Complaint";
 import { Task } from "@/models/Task";
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -44,7 +49,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   }
 
   const titles = await propertyTitleMap([task.propertyId]);
-  return NextResponse.json({ data: serializeTask(task, titles) });
+  return NextResponse.json({
+    data: isTasksV2Enabled()
+      ? serializeTaskV2(task as TaskDoc, titles)
+      : serializeTask(task, titles),
+  });
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -95,6 +104,40 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 
   const updateData: Record<string, unknown> = {};
+  if (isTasksV2Enabled()) {
+    // v2: status moves go through POST /tasks/[id]/status (transition rules,
+    // approvals, complaint sync); this route only edits details.
+    if (parsed.data.status !== undefined && parsed.data.status !== task.status) {
+      return NextResponse.json(
+        { error: "Change the status with the status action" },
+        { status: 409 },
+      );
+    }
+    if (
+      parsed.data.assignedTo !== undefined ||
+      parsed.data.assignedToName !== undefined ||
+      parsed.data.completedAt !== undefined
+    ) {
+      return NextResponse.json(
+        { error: "Use the assign action to change who does the task" },
+        { status: 409 },
+      );
+    }
+    const extra = taskV2UpdateFields.safeParse(body ?? {});
+    if (!extra.success) {
+      return NextResponse.json(
+        { error: "Invalid task payload", issues: extra.error.flatten() },
+        { status: 400 },
+      );
+    }
+    if (extra.data.category !== undefined) updateData.category = extra.data.category;
+    if (extra.data.scheduledFor !== undefined) updateData.scheduledFor = extra.data.scheduledFor;
+    if (extra.data.location !== undefined) {
+      const location = await loadTaskLocation(task.propertyId, extra.data.location);
+      if ("error" in location) return NextResponse.json({ error: location.error }, { status: 400 });
+      updateData.location = location;
+    }
+  }
   if (parsed.data.title !== undefined) updateData.title = parsed.data.title;
   if (parsed.data.priority !== undefined) updateData.priority = parsed.data.priority;
   if (parsed.data.status !== undefined) {
@@ -122,7 +165,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 
   const titles = await propertyTitleMap([updated.propertyId]);
-  return NextResponse.json({ data: serializeTask(updated, titles) });
+  return NextResponse.json({
+    data: isTasksV2Enabled()
+      ? serializeTaskV2(updated as TaskDoc, titles)
+      : serializeTask(updated, titles),
+  });
 }
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -166,5 +213,9 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   // Scope the mutation to the loaded task (matching PATCH's predicate) so a
   // concurrent owner/property change cannot be deleted by id alone.
   await Task.deleteOne({ _id: id, ownerId: task.ownerId, propertyId: task.propertyId });
+  if ((task.complaintIds ?? []).length > 0) {
+    // Keep complaints consistent: they no longer point at a deleted task.
+    await Complaint.updateMany({ _id: { $in: task.complaintIds } }, { $pull: { taskIds: id } });
+  }
   return NextResponse.json({ data: { id } });
 }

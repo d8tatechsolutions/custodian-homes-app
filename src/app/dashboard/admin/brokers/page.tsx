@@ -3,6 +3,7 @@
 import { Check, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { OwnerBrokerRequestsSection } from "@/components/brokers/OwnerBrokerRequestsSection";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -189,12 +190,13 @@ export default function AdminBrokersPage() {
 
   return (
     <DashboardShell
-      roleName="Admin"
+      roleName="Owner"
       nav={nav}
       title="Broker Management"
       subtitle="Verify broker profiles, grant property/unit distribution authorizations, and establish commission agreements."
     >
       <div className="space-y-6">
+        {user ? <OwnerBrokerRequestsSection currentUserId={user.id} /> : null}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-xl font-semibold">Broker Network & Authorizations</h2>

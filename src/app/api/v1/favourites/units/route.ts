@@ -2,9 +2,11 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
+import { authenticateSession } from "@/lib/auth-scope";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
-import { authenticate, requireAuth } from "@/lib/permissions";
+import { requireAuth } from "@/lib/permissions";
 import { Property } from "@/models/Property";
 import { Unit } from "@/models/Unit";
 import { UnitFavorite } from "@/models/UnitFavorite";
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
   const authError = await requireAuth(request);
   if (authError) return authError;
 
-  const authUser = authenticate(request);
+  const authUser = await authenticateSession(request);
   if (!authUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -86,14 +88,14 @@ export async function POST(request: NextRequest) {
   const authError = await requireAuth(request);
   if (authError) return authError;
 
-  const authUser = authenticate(request);
+  const authUser = await authenticateSession(request);
   if (!authUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await readJsonBody(request);
   } catch (error) {
     if (error instanceof SyntaxError) {
       return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });

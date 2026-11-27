@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { authenticateSession } from "@/lib/auth-scope";
 import { getAssignedPropertyIds, getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate } from "@/lib/permissions";
 import { Invoice } from "@/models/Invoice";
 import { Property } from "@/models/Property";
 import { Tenant } from "@/models/Tenant";
@@ -24,12 +24,14 @@ function escapeRegex(value: string): string {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const q = (request.nextUrl.searchParams.get("q") ?? "").trim();
+  // Capped like the other search boxes: nobody types more, and it keeps the
+  // database pattern small.
+  const q = (request.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 100);
   if (q.length < 2) {
     return NextResponse.json({ data: [] as SearchResult[] });
   }

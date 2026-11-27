@@ -11,6 +11,8 @@ export interface CaretakerRow {
   managedByOwnerId: string;
   privileges: string[];
   propertyCount: number;
+  /** "agent" when the owner marked this caretaker as their managing agent. */
+  staffTitle?: string;
 }
 
 export interface CaretakerInviteInput {
@@ -143,4 +145,26 @@ export function useUpdateCaretakerPrivileges() {
   };
 
   return { updatePrivileges, pendingId, error };
+}
+
+export function useUpdateCaretakerTitle() {
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  const setAgent = async (id: string, agent: boolean): Promise<string> => {
+    setPendingId(id);
+    try {
+      const res = await fetch(`/api/v1/caretakers/${id}/title`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to update title");
+      return String(json.data?.staffTitle ?? "");
+    } finally {
+      setPendingId(null);
+    }
+  };
+
+  return { setAgent, pendingId };
 }

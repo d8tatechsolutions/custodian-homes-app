@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { authenticateSession } from "@/lib/auth-scope";
 import { connectToDatabase } from "@/lib/mongoose";
 import { parsePagination } from "@/lib/pagination";
-import { authenticate } from "@/lib/permissions";
 import { BrokerAuthorization } from "@/models/BrokerAuthorization";
 import { BrokerProfile } from "@/models/BrokerProfile";
 import { Listing } from "@/models/Listing";
@@ -11,7 +11,7 @@ import { Property } from "@/models/Property";
 import { Unit } from "@/models/Unit";
 
 export async function GET(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -4,7 +4,7 @@ import { UnitsView } from "@/components/units/UnitsView";
 import { adminNav } from "@/config/dashboardNav";
 
 const AdminUnitsPage = () => {
-  return <UnitsView nav={adminNav} roleName="Admin" />;
+  return <UnitsView nav={adminNav} roleName="Owner" />;
 };
 
 export default AdminUnitsPage;

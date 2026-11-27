@@ -3,11 +3,15 @@ import bcrypt from "bcryptjs";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonBody } from "@/app/api/v1/_helpers";
 import { writeAuditEvent } from "@/lib/audit";
+import { authenticateSession } from "@/lib/auth-scope";
 import { sendInviteEmail } from "@/lib/email";
+import { hashLinkToken } from "@/lib/link-tokens";
 import { getManagedOwnerId, getStaffIdsForOwner } from "@/lib/managed-owner";
+import { maskEmail } from "@/lib/mask-email";
 import { connectToDatabase } from "@/lib/mongoose";
-import { authenticate, getAdminAssignmentScope } from "@/lib/permissions";
+import { getAdminAssignmentScope } from "@/lib/permissions";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { withUserCodeRetry } from "@/lib/user-code";
 import { createPhoneOnlyAccount, resolveUserByContact } from "@/lib/user-identity";
@@ -34,7 +38,7 @@ function readUserCode(value: unknown): string {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -129,7 +133,7 @@ export async function POST(request: NextRequest) {
   const originError = checkSameOrigin(request);
   if (originError) return originError;
 
-  const auth = authenticate(request);
+  const auth = await authenticateSession(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -143,7 +147,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = custodianInviteSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -269,7 +273,7 @@ export async function POST(request: NextRequest) {
           email,
           name: displayName,
           phone,
-          verificationToken,
+          verificationToken: hashLinkToken(verificationToken),
           verificationTokenExpiry,
         },
       },
@@ -278,7 +282,7 @@ export async function POST(request: NextRequest) {
     if (!emailSent) {
       console.error("[invite] Invitation email could not be sent", {
         role: "custodian",
-        recipient: email,
+        recipient: maskEmail(email),
       });
     }
     await audit("custodian.invited", String(existing._id), {
@@ -351,7 +355,7 @@ export async function POST(request: NextRequest) {
       role: "custodian",
       isActive: false,
       isVerified: false,
-      verificationToken,
+      verificationToken: hashLinkToken(verificationToken),
       verificationTokenExpiry,
       userCode,
     }),
@@ -361,7 +365,7 @@ export async function POST(request: NextRequest) {
   if (!emailSent) {
     console.error("[invite] Invitation email could not be sent", {
       role: "custodian",
-      recipient: email,
+      recipient: maskEmail(email),
     });
   }
   await audit("custodian.invited", String(created._id), {

@@ -1,6 +1,7 @@
 "use client";
 
 import { Building2, TrendingUp, Users } from "lucide-react";
+import { TitleCell } from "@/components/common/TitleCell";
 
 import { DashboardShell } from "@/components/DashboardShell";
 import { StatCard } from "@/components/StatCard";
@@ -152,7 +153,11 @@ const SystemAdminDashboard = () => {
               ) : (
                 properties.map((p) => (
                   <TableRow key={p._id}>
-                    <TableCell className="font-medium">{p.title}</TableCell>
+                    <TableCell className="font-medium">
+                      <TitleCell href={`/dashboard/system-admin/portfolio/${p._id}/structure`}>
+                        {p.title}
+                      </TitleCell>
+                    </TableCell>
                     <TableCell className="capitalize text-muted-foreground">{p.type}</TableCell>
                     <TableCell className="text-muted-foreground">{p.location}</TableCell>
                     <TableCell>

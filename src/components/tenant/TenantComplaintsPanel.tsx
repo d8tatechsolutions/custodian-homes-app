@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { SearchInput } from "@/components/SearchInput";
 import { StatCard } from "@/components/StatCard";
+import { ComplaintWorkProgress } from "@/components/tenant/ComplaintWorkProgress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,8 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useComplaintMutations, useComplaints } from "@/hooks/use-complaints";
+import { useReleaseFlags } from "@/hooks/use-fx";
+import { useComplaintProgress } from "@/hooks/use-maintenance";
 import type { ComplaintCategory, ComplaintPriority, ComplaintStatus } from "@/lib/domain-enums";
 import { relativeTime } from "@/lib/format";
 import { matchesQuery } from "@/lib/search";
@@ -56,6 +59,8 @@ type Filter = "all" | ComplaintStatus;
 /** Tenant complaints body — rendered on My Home. */
 export function TenantComplaintsPanel() {
   const { items, refetch } = useComplaints();
+  const { flags } = useReleaseFlags();
+  const { progress, refetch: refetchProgress } = useComplaintProgress(flags.tasksV2);
   const { createComplaint, pending } = useComplaintMutations();
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
@@ -188,6 +193,17 @@ export function TenantComplaintsPanel() {
                   {c.resolution}
                 </p>
               )}
+              {flags.tasksV2 ? (
+                <ComplaintWorkProgress
+                  complaintId={c._id}
+                  complaintStatus={c.status}
+                  progress={progress[c._id]}
+                  onConfirmed={() => {
+                    void refetch();
+                    refetchProgress();
+                  }}
+                />
+              ) : null}
             </div>
           ))
         )}

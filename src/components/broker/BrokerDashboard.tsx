@@ -4,6 +4,10 @@ import { Check, Copy, ExternalLink, Shield } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { BrokerEnquiriesPanel } from "@/components/brokers/BrokerEnquiriesPanel";
+import { BrokerFindListings } from "@/components/brokers/BrokerFindListings";
+import { BrokerOwnListingsPanel } from "@/components/brokers/BrokerOwnListingsPanel";
+import { BrokerRequestsPanel } from "@/components/brokers/BrokerRequestsPanel";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,7 +24,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { brokerNav as nav } from "@/config/dashboardNav";
 import { useAuth } from "@/hooks/use-auth";
+import { useBrokerBids } from "@/hooks/use-broker-bids";
+import { useReleaseFlags } from "@/hooks/use-fx";
 import { formatKES } from "@/lib/format";
+
+const LINKABLE_TABS = new Set(["requests", "own", "enquiries", "find"]);
 
 export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
   const { user } = useAuth();
@@ -32,8 +40,12 @@ export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
   const [commissions, setCommissions] = useState<any[]>([]);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [tab, setTab] = useState(initialTab ?? "listings");
+  const { flags } = useReleaseFlags();
+  const { bids, refetch: refetchBids } = useBrokerBids(flags.brokerBids);
   useEffect(() => {
-    setTab(initialTab ?? "listings");
+    // Notification links open a specific tab with `?tab=` (e.g. requests).
+    const fromLink = new URLSearchParams(window.location.search).get("tab") ?? "";
+    setTab(LINKABLE_TABS.has(fromLink) ? fromLink : (initialTab ?? "listings"));
   }, [initialTab]);
 
   // Profile form state
@@ -266,13 +278,56 @@ export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
         </div>
 
         <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-5 max-w-2xl">
-            <TabsTrigger value="listings">Market Listings</TabsTrigger>
-            <TabsTrigger value="prospects">Prospects</TabsTrigger>
-            <TabsTrigger value="commissions">Commissions</TabsTrigger>
-            <TabsTrigger value="authorizations">Authorizations</TabsTrigger>
-            <TabsTrigger value="profile">Profile & Terms</TabsTrigger>
-          </TabsList>
+          <div className="-mx-1 overflow-x-auto px-1 pb-1">
+            <TabsList className={flags.brokerBids ? "w-max" : "grid w-full grid-cols-5 max-w-2xl"}>
+              <TabsTrigger value="listings">Market Listings</TabsTrigger>
+              {flags.brokerBids ? <TabsTrigger value="find">Find listings</TabsTrigger> : null}
+              {flags.brokerBids ? (
+                <TabsTrigger value="requests">
+                  My requests
+                  {bids.some((b) => b.awaiting === "broker") ? (
+                    <>
+                      <span
+                        className="ml-1.5 inline-block h-2 w-2 shrink-0 rounded-full bg-primary"
+                        aria-hidden="true"
+                      />
+                      <span className="sr-only">(needs your answer)</span>
+                    </>
+                  ) : null}
+                </TabsTrigger>
+              ) : null}
+              {flags.brokerBids ? <TabsTrigger value="own">My properties</TabsTrigger> : null}
+              {flags.brokerBids ? <TabsTrigger value="enquiries">Enquiries</TabsTrigger> : null}
+              <TabsTrigger value="prospects">Prospects</TabsTrigger>
+              <TabsTrigger value="commissions">Commissions</TabsTrigger>
+              <TabsTrigger value="authorizations">Authorizations</TabsTrigger>
+              <TabsTrigger value="profile">Profile & Terms</TabsTrigger>
+            </TabsList>
+          </div>
+
+          {flags.brokerBids ? (
+            <>
+              <TabsContent value="find" className="mt-6">
+                <BrokerFindListings
+                  bids={bids}
+                  defaultTerms={profile?.defaultCommission}
+                  onRequested={() => {
+                    refetchBids();
+                    setTab("requests");
+                  }}
+                />
+              </TabsContent>
+              <TabsContent value="requests" className="mt-6">
+                <BrokerRequestsPanel bids={bids} onChanged={refetchBids} />
+              </TabsContent>
+              <TabsContent value="own" className="mt-6">
+                <BrokerOwnListingsPanel />
+              </TabsContent>
+              <TabsContent value="enquiries" className="mt-6">
+                <BrokerEnquiriesPanel />
+              </TabsContent>
+            </>
+          ) : null}
 
           {/* Listings Tab */}
           <TabsContent value="listings" className="mt-6 space-y-4">
@@ -289,7 +344,7 @@ export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
                   {profile?.status !== "verified"
                     ? "Your broker profile must be verified by an administrator to distribute listings."
                     : authorizations.length === 0
-                      ? "No property or unit authorizations assigned yet. Contact property admins for access."
+                      ? "No property or unit authorizations assigned yet. Contact the property owner for access."
                       : "No active listings found under your current authorizations."}
                 </div>
               ) : (

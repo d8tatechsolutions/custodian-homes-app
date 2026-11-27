@@ -8,6 +8,7 @@ import {
   DoorOpen,
   FileBarChart,
   FileText,
+  Handshake,
   Heart,
   Home,
   Mail,
@@ -27,6 +28,8 @@ export interface DashNavItem {
   label: string;
   icon: LucideIcon;
   group?: string;
+  /** Only shown when this release flag is on (filtered by DashboardShell). */
+  releaseFlag?: "tasksV2" | "brokerBids" | "fxDisplay";
 }
 
 export interface NavGroup {
@@ -175,7 +178,25 @@ export const adminNav: DashNavItem[] = [
   },
 ];
 export const caretakerNav = buildDashboardNav("caretaker");
-export const custodianNav = buildDashboardNav("custodian");
+export const custodianNav: DashNavItem[] = [
+  ...buildDashboardNav("custodian"),
+  // Tasks & Maintenance v2 gives custodians a tasks hub; hidden until the flag is on.
+  {
+    to: "/dashboard/custodian/tasks",
+    label: "Tasks & Maintenance",
+    icon: Wrench,
+    group: "operations",
+    releaseFlag: "tasksV2",
+  },
+  // Custodians approve broker requests on properties whose owner has no account.
+  {
+    to: "/dashboard/custodian/brokers",
+    label: "Broker requests",
+    icon: Handshake,
+    group: "people",
+    releaseFlag: "brokerBids",
+  },
+];
 export const brokerNav = buildDashboardNav("broker");
 
 export const caretakerNavWithTenants: DashNavItem[] = [
@@ -214,6 +235,13 @@ export const systemAdminNav: DashNavItem[] = [
     label: "Commissions",
     icon: Calculator,
     group: "administration",
+  },
+  {
+    to: "/dashboard/system-admin/marketplace",
+    label: "Brokers & Listings",
+    icon: Shield,
+    group: "administration",
+    releaseFlag: "brokerBids",
   },
 ];
 
