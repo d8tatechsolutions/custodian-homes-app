@@ -174,16 +174,14 @@ describe("getUsdKesRateOn", () => {
   });
 
   it("falls back to the earliest stored rate for days before our history", async () => {
-    fxRate.findOne
-      .mockReturnValueOnce(buildQuery(null))
-      .mockReturnValueOnce(
-        buildQuery({
-          rate: 127,
-          effectiveDate: "2026-11-25",
-          source: "x",
-          fetchedAt: "2026-11-25T03:00:00Z",
-        }),
-      );
+    fxRate.findOne.mockReturnValueOnce(buildQuery(null)).mockReturnValueOnce(
+      buildQuery({
+        rate: 127,
+        effectiveDate: "2026-11-25",
+        source: "x",
+        fetchedAt: "2026-11-25T03:00:00Z",
+      }),
+    );
     expect(await getUsdKesRateOn("2025-01-01", NOW)).toMatchObject({ rate: 127 });
   });
 });

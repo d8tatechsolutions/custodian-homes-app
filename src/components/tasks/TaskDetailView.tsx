@@ -74,7 +74,6 @@ interface TaskDetailViewProps {
   invoicesHref?: string;
 }
 
-
 function formatStamp(iso: string) {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())

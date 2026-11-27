@@ -141,7 +141,8 @@ function VendorDialog({
         <DialogHeader>
           <DialogTitle>{vendor ? "Edit service provider" : "Add service provider"}</DialogTitle>
           <DialogDescription>
-            Service providers don't log in. They are told about a job by email once its cost is approved.
+            Service providers don't log in. They are told about a job by email once its cost is
+            approved.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -397,8 +398,8 @@ export function VendorsPanel() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {deleting?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Past tasks keep their history. A service provider with open tasks can't be removed — reassign
-              them first, or mark them inactive instead.
+              Past tasks keep their history. A service provider with open tasks can't be removed —
+              reassign them first, or mark them inactive instead.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -412,7 +413,9 @@ export function VendorsPanel() {
                   toast.success("Service provider removed");
                   refetch();
                 } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "Could not remove the service provider");
+                  toast.error(
+                    e instanceof Error ? e.message : "Could not remove the service provider",
+                  );
                 } finally {
                   setDeleting(null);
                 }
