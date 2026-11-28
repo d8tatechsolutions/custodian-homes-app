@@ -206,7 +206,7 @@ export const PropertyStructureEditor = ({
   const toggleFloorDuplex = (blockIndex: number, floorIndex: number) => {
     const current = blocks[blockIndex].floors[floorIndex].duplex;
     // null/undefined inherits from block; toggle to explicit true/false
-    const next = current === true ? false : true;
+    const next = current !== true;
     updateFloor(blockIndex, floorIndex, { duplex: next });
   };
 

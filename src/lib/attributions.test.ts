@@ -208,7 +208,7 @@ describe("Attribution domain services", () => {
         propertyId: "prop-1",
       });
 
-      expect(res._id).toBe("attr-existing");
+      expect(res?._id).toBe("attr-existing");
       expect(attributionStub.create).not.toHaveBeenCalled();
     });
 
@@ -230,8 +230,8 @@ describe("Attribution domain services", () => {
         propertyId: "prop-1",
       });
 
-      expect(res.source).toBe("direct");
-      expect(res.status).toBe("locked");
+      expect(res?.source).toBe("direct");
+      expect(res?.status).toBe("locked");
       expect(attributionStub.create).toHaveBeenCalledWith(
         expect.objectContaining({
           applicationId: "app-1",
@@ -290,7 +290,7 @@ describe("Attribution domain services", () => {
         propertyId: "prop-1",
       });
 
-      expect(res.status).toBe("locked");
+      expect(res?.status).toBe("locked");
       expect(attributionStub.updateOne).toHaveBeenCalledWith(
         { _id: "attr-touch", status: "provisional" },
         expect.objectContaining({
@@ -330,7 +330,7 @@ describe("Attribution domain services", () => {
         propertyId: "prop-1",
       });
 
-      expect(res.source).toBe("direct");
+      expect(res?.source).toBe("direct");
       expect(attributionStub.updateOne).toHaveBeenCalledWith(
         { _id: "attr-stale", status: "provisional" },
         expect.objectContaining({

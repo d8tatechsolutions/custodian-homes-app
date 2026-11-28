@@ -8,6 +8,7 @@ import { BrokerEnquiriesPanel } from "@/components/brokers/BrokerEnquiriesPanel"
 import { BrokerFindListings } from "@/components/brokers/BrokerFindListings";
 import { BrokerOwnListingsPanel } from "@/components/brokers/BrokerOwnListingsPanel";
 import { BrokerRequestsPanel } from "@/components/brokers/BrokerRequestsPanel";
+import type { StoredTerms } from "@/components/brokers/CommissionTermsFields";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,14 +31,72 @@ import { formatKES } from "@/lib/format";
 
 const LINKABLE_TABS = new Set(["requests", "own", "enquiries", "find"]);
 
+/** The broker API responses, as far as this dashboard reads them. */
+interface BrokerProfileView {
+  agencyName?: string;
+  licenseNumber?: string;
+  email?: string;
+  phone?: string;
+  status?: string;
+  defaultCommission?: StoredTerms | null;
+  payoutMethod?: { payoutType?: "mpesa" | "bank" | "none"; accountNumber?: string };
+}
+interface BrokerListingView {
+  id: string;
+  headline: string;
+  askingRent: number;
+  serviceCharge: number;
+  property: { title: string };
+  unit: { unitNumber: string; beds: number };
+  published: boolean;
+  shareCode: string | null;
+  shareUrl: string | null;
+}
+interface AuthorizationView {
+  _id: string;
+  scopeType: string;
+  scopeId: string;
+  propertyId: string;
+  status: string;
+  grantedAt: string;
+}
+interface AgreementView {
+  _id: string;
+  scopeType: string;
+  scopeId: string;
+  basis: string;
+  rateBps: number;
+  fixedAmountMinor: number;
+  status: string;
+}
+interface ProspectView {
+  id: string;
+  referenceCode: string;
+  unitHeadline: string;
+  appliedAt: string;
+  status: string;
+}
+interface CommissionView {
+  _id: string;
+  invoiceId: string;
+  kind: string;
+  grossMinor: number;
+  taxMinor: number;
+  netMinor: number;
+  status: string;
+}
+
+const errorText = (err: unknown, fallback: string) =>
+  err instanceof Error && err.message ? err.message : fallback;
+
 export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
   const { user } = useAuth();
-  const [profile, setProfile] = useState<any>(null);
-  const [listings, setListings] = useState<any[]>([]);
-  const [authorizations, setAuthorizations] = useState<any[]>([]);
-  const [agreements, setAgreements] = useState<any[]>([]);
-  const [prospects, setProspects] = useState<any[]>([]);
-  const [commissions, setCommissions] = useState<any[]>([]);
+  const [profile, setProfile] = useState<BrokerProfileView | null>(null);
+  const [listings, setListings] = useState<BrokerListingView[]>([]);
+  const [authorizations, setAuthorizations] = useState<AuthorizationView[]>([]);
+  const [agreements, setAgreements] = useState<AgreementView[]>([]);
+  const [prospects, setProspects] = useState<ProspectView[]>([]);
+  const [commissions, setCommissions] = useState<CommissionView[]>([]);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [tab, setTab] = useState(initialTab ?? "listings");
   const { flags } = useReleaseFlags();
@@ -159,8 +218,8 @@ export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
       setProfile(data.profile);
       toast.success("Profile saved successfully");
       fetchBrokerData();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to update profile");
+    } catch (err) {
+      toast.error(errorText(err, "Failed to update profile"));
     } finally {
       setSavingProfile(false);
     }
@@ -179,8 +238,8 @@ export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
 
       toast.success("Share link generated!");
       fetchBrokerData();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to generate link");
+    } catch (err) {
+      toast.error(errorText(err, "Failed to generate link"));
     }
   };
 
@@ -197,8 +256,8 @@ export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
 
       toast.success("Commission agreement accepted");
       fetchBrokerData();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to accept agreement");
+    } catch (err) {
+      toast.error(errorText(err, "Failed to accept agreement"));
     }
   };
 
@@ -387,7 +446,9 @@ export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7"
-                                  onClick={() => copyToClipboard(l.shareUrl, l.shareCode)}
+                                  onClick={() =>
+                                    copyToClipboard(l.shareUrl ?? "", l.shareCode ?? "")
+                                  }
                                 >
                                   {copiedCode === l.shareCode ? (
                                     <Check className="h-3.5 w-3.5 text-emerald-600" />
@@ -414,7 +475,7 @@ export function BrokerDashboard({ initialTab }: { initialTab?: string }) {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => copyToClipboard(l.shareUrl, l.shareCode)}
+                                onClick={() => copyToClipboard(l.shareUrl ?? "", l.shareCode ?? "")}
                               >
                                 Copy Link
                               </Button>

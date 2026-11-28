@@ -4,6 +4,7 @@ import { z } from "zod";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { authenticateSession } from "@/lib/auth-scope";
 import { getBrokerProfile, upsertBrokerProfile } from "@/lib/brokers";
+import { publicErrorMessage } from "@/lib/public-error";
 
 const profileSchema = z.object({
   agencyName: z.string().optional(),
@@ -54,9 +55,9 @@ export async function POST(request: NextRequest) {
 
     const profile = await upsertBrokerProfile(auth.userId, parsed.data);
     return NextResponse.json({ profile }, { status: 200 });
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: err?.message || "Failed to update profile" },
+      { error: publicErrorMessage(err, "Failed to update profile") },
       { status: 500 },
     );
   }

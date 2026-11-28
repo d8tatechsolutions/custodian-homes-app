@@ -6,6 +6,7 @@ import { readJsonBody } from "@/app/api/v1/_helpers";
 import { authenticateSession } from "@/lib/auth-scope";
 import { verifyBrokerProfile } from "@/lib/brokers";
 import { connectToDatabase } from "@/lib/mongoose";
+import { publicErrorMessage } from "@/lib/public-error";
 import { User } from "@/models/User";
 
 const verifySchema = z.object({
@@ -49,9 +50,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
 
     return NextResponse.json({ profile: updated });
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: err?.message || "Failed to verify broker profile" },
+      { error: publicErrorMessage(err, "Failed to verify broker profile") },
       { status: 400 },
     );
   }

@@ -73,6 +73,13 @@ const STATUS_VARIANT: Record<UnitStatus, "default" | "secondary" | "outline"> = 
   maintenance: "secondary",
 };
 
+/** The unit's marketplace listing, as this view reads it. */
+interface UnitListingView {
+  _id: string;
+  state: string;
+  headline: string;
+  askingRent: number;
+}
 export function UnitsView({ nav, roleName, canManage = true }: Props) {
   const [statusFilter, setStatusFilter] = useState<"all" | UnitStatus>("all");
   const [query, setQuery] = useState("");
@@ -91,7 +98,7 @@ export function UnitsView({ nav, roleName, canManage = true }: Props) {
   const { assignUnit, vacateUnit, pending: assignPending } = useTenantMutations();
 
   const [listingUnit, setListingUnit] = useState<Unit | null>(null);
-  const [unitListing, setUnitListing] = useState<any | null>(null);
+  const [unitListing, setUnitListing] = useState<UnitListingView | null>(null);
   const [listingLoading, setListingLoading] = useState(false);
   const [listingHeadline, setListingHeadline] = useState("");
   const [listingRent, setListingRent] = useState("");
@@ -282,8 +289,8 @@ export function UnitsView({ nav, roleName, canManage = true }: Props) {
       const data = await res.json();
       setUnitListing(data.listing);
       toast.success("Draft listing created");
-    } catch (err: any) {
-      toast.error(err.message || "Could not create listing");
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : "Could not create listing");
     }
   };
 
@@ -302,8 +309,10 @@ export function UnitsView({ nav, roleName, canManage = true }: Props) {
       const data = await res.json();
       setUnitListing(data.listing);
       toast.success(`Listing updated to ${data.listing.state}`);
-    } catch (err: any) {
-      toast.error(err.message || `Could not ${action} listing`);
+    } catch (err) {
+      toast.error(
+        err instanceof Error && err.message ? err.message : `Could not ${action} listing`,
+      );
     }
   };
 

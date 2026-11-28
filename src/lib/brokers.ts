@@ -7,13 +7,20 @@ import type {
   CommissionAgreementStatus,
   CommissionBasis,
 } from "@/lib/domain-enums";
+import type { Lean } from "@/lib/lean";
 import { connectToDatabase } from "@/lib/mongoose";
 import type { Role } from "@/lib/permissions";
-import { BrokerAuthorization } from "@/models/BrokerAuthorization";
-import { BrokerProfile } from "@/models/BrokerProfile";
-import { CommissionAgreement } from "@/models/CommissionAgreement";
-import { Listing } from "@/models/Listing";
-import { ListingPublisher } from "@/models/ListingPublisher";
+import {
+  BrokerAuthorization,
+  type BrokerAuthorizationDocument,
+} from "@/models/BrokerAuthorization";
+import { BrokerProfile, type BrokerProfileDocument } from "@/models/BrokerProfile";
+import {
+  CommissionAgreement,
+  type CommissionAgreementDocument,
+} from "@/models/CommissionAgreement";
+import { Listing, type ListingDocument } from "@/models/Listing";
+import { ListingPublisher, type ListingPublisherDocument } from "@/models/ListingPublisher";
 
 export interface UpsertBrokerProfileInput {
   agencyName?: string;
@@ -32,16 +39,18 @@ export interface UpsertBrokerProfileInput {
 
 export async function getBrokerProfile(userId: string) {
   await connectToDatabase();
-  return (await BrokerProfile.findOne({ userId }).lean()) as any;
+  return (await BrokerProfile.findOne({ userId }).lean()) as Lean<BrokerProfileDocument> | null;
 }
 
 export async function upsertBrokerProfile(userId: string, input: UpsertBrokerProfileInput) {
   await connectToDatabase();
 
-  const existing = (await BrokerProfile.findOne({ userId }).lean()) as any;
+  const existing = (await BrokerProfile.findOne({
+    userId,
+  }).lean()) as Lean<BrokerProfileDocument> | null;
 
   if (existing) {
-    const updateData: Record<string, any> = {
+    const updateData: Record<string, unknown> = {
       agencyName: input.agencyName ?? existing.agencyName,
       licenseNumber: input.licenseNumber ?? existing.licenseNumber,
       phone: input.phone || existing.phone,
@@ -57,7 +66,7 @@ export async function upsertBrokerProfile(userId: string, input: UpsertBrokerPro
     }
 
     await BrokerProfile.updateOne({ userId }, { $set: updateData });
-    const updated = (await BrokerProfile.findOne({ userId }).lean()) as any;
+    const updated = (await BrokerProfile.findOne({ userId }).lean()) as Lean<BrokerProfileDocument>;
 
     await writeAuditEvent({
       actor: { userId, role: "broker" },
@@ -83,7 +92,9 @@ export async function upsertBrokerProfile(userId: string, input: UpsertBrokerPro
     status: "pending",
   });
 
-  const createdDoc = (await BrokerProfile.findById(created._id).lean()) as any;
+  const createdDoc = (await BrokerProfile.findById(
+    created._id,
+  ).lean()) as Lean<BrokerProfileDocument>;
 
   await writeAuditEvent({
     actor: { userId, role: "broker" },
@@ -108,12 +119,14 @@ export async function verifyBrokerProfile(
     throw new Error("Only system administrators can verify or suspend broker profiles");
   }
 
-  const profile = (await BrokerProfile.findById(profileId).lean()) as any;
+  const profile = (await BrokerProfile.findById(
+    profileId,
+  ).lean()) as Lean<BrokerProfileDocument> | null;
   if (!profile) {
     throw new Error("Broker profile not found");
   }
 
-  const updateFields: Record<string, any> = {
+  const updateFields: Record<string, unknown> = {
     status: decision,
     verificationNotes: notes ?? profile.verificationNotes ?? "",
   };
@@ -128,7 +141,7 @@ export async function verifyBrokerProfile(
   }
 
   await BrokerProfile.updateOne({ _id: profileId }, { $set: updateFields });
-  const updated = (await BrokerProfile.findById(profileId).lean()) as any;
+  const updated = (await BrokerProfile.findById(profileId).lean()) as Lean<BrokerProfileDocument>;
 
   // If suspended or rejected, also cascade suspend active broker publishers
   if (decision === "suspended" || decision === "rejected") {
@@ -177,9 +190,9 @@ export async function authorizeBroker(
 
   const brokerProfile = (await BrokerProfile.findOne({
     userId: input.brokerId,
-  }).lean()) as any;
+  }).lean()) as Lean<BrokerProfileDocument> | null;
 
-  if (!brokerProfile || brokerProfile.status !== "verified") {
+  if (brokerProfile?.status !== "verified") {
     throw new Error("Cannot authorize unverified or nonexistent broker");
   }
 
@@ -201,7 +214,7 @@ export async function authorizeBroker(
     scopeType: input.scopeType,
     scopeId: input.scopeId,
     status: "active",
-  }).lean()) as any;
+  }).lean()) as Lean<BrokerAuthorizationDocument> | null;
 
   if (existing) {
     return existing;
@@ -220,7 +233,9 @@ export async function authorizeBroker(
     notes: input.notes || "",
   });
 
-  const createdDoc = (await BrokerAuthorization.findById(created._id).lean()) as any;
+  const createdDoc = (await BrokerAuthorization.findById(
+    created._id,
+  ).lean()) as Lean<BrokerAuthorizationDocument>;
 
   await writeAuditEvent({
     actor: { userId: adminActor.userId, role: adminActor.role },
@@ -245,7 +260,9 @@ export async function revokeBrokerAuthorization(
 ) {
   await connectToDatabase();
 
-  const auth = (await BrokerAuthorization.findById(authId).lean()) as any;
+  const auth = (await BrokerAuthorization.findById(
+    authId,
+  ).lean()) as Lean<BrokerAuthorizationDocument> | null;
   if (!auth) {
     throw new Error("Broker authorization not found");
   }
@@ -274,7 +291,9 @@ export async function revokeBrokerAuthorization(
     },
   );
 
-  const updated = (await BrokerAuthorization.findById(authId).lean()) as any;
+  const updated = (await BrokerAuthorization.findById(
+    authId,
+  ).lean()) as Lean<BrokerAuthorizationDocument>;
 
   // Cascade revoke broker publishers linked to this authorization
   await ListingPublisher.updateMany(
@@ -314,12 +333,14 @@ export async function listBrokerAuthorizations(filter: {
   status?: BrokerAuthStatus;
 }) {
   await connectToDatabase();
-  const query: Record<string, any> = {};
+  const query: Record<string, unknown> = {};
   if (filter.brokerId) query.brokerId = filter.brokerId;
   if (filter.propertyId) query.propertyId = filter.propertyId;
   if (filter.status) query.status = filter.status;
 
-  return (await BrokerAuthorization.find(query).sort({ createdAt: -1 }).lean()) as any[];
+  return (await BrokerAuthorization.find(query)
+    .sort({ createdAt: -1 })
+    .lean()) as Lean<BrokerAuthorizationDocument>[];
 }
 
 export interface CommissionAgreementInput {
@@ -370,7 +391,9 @@ export async function createCommissionAgreement(
     createdByUserId: adminActor.userId,
   });
 
-  const createdDoc = (await CommissionAgreement.findById(created._id).lean()) as any;
+  const createdDoc = (await CommissionAgreement.findById(
+    created._id,
+  ).lean()) as Lean<CommissionAgreementDocument>;
 
   await writeAuditEvent({
     actor: { userId: adminActor.userId, role: adminActor.role },
@@ -391,7 +414,9 @@ export async function createCommissionAgreement(
 export async function acceptCommissionAgreement(brokerUserId: string, agreementId: string) {
   await connectToDatabase();
 
-  const agreement = (await CommissionAgreement.findById(agreementId).lean()) as any;
+  const agreement = (await CommissionAgreement.findById(
+    agreementId,
+  ).lean()) as Lean<CommissionAgreementDocument> | null;
   if (!agreement) {
     throw new Error("Commission agreement not found");
   }
@@ -414,7 +439,9 @@ export async function acceptCommissionAgreement(brokerUserId: string, agreementI
     },
   );
 
-  const updated = (await CommissionAgreement.findById(agreementId).lean()) as any;
+  const updated = (await CommissionAgreement.findById(
+    agreementId,
+  ).lean()) as Lean<CommissionAgreementDocument>;
 
   await writeAuditEvent({
     actor: { userId: brokerUserId, role: "broker" },
@@ -435,7 +462,9 @@ export async function terminateCommissionAgreement(
 ) {
   await connectToDatabase();
 
-  const agreement = (await CommissionAgreement.findById(agreementId).lean()) as any;
+  const agreement = (await CommissionAgreement.findById(
+    agreementId,
+  ).lean()) as Lean<CommissionAgreementDocument> | null;
   if (!agreement) {
     throw new Error("Commission agreement not found");
   }
@@ -464,7 +493,9 @@ export async function terminateCommissionAgreement(
     },
   );
 
-  const updated = (await CommissionAgreement.findById(agreementId).lean()) as any;
+  const updated = (await CommissionAgreement.findById(
+    agreementId,
+  ).lean()) as Lean<CommissionAgreementDocument>;
 
   await writeAuditEvent({
     actor: { userId: adminActor.userId, role: adminActor.role },
@@ -481,22 +512,33 @@ export async function terminateCommissionAgreement(
 export async function canBrokerDistributeListing(
   brokerUserId: string,
   listingId: string,
-): Promise<{
-  eligible: boolean;
-  reason?: string;
-  authorization?: any;
-  agreement?: any;
-  listing?: any;
-}> {
+): Promise<
+  | {
+      eligible: true;
+      reason?: string;
+      authorization: Lean<BrokerAuthorizationDocument>;
+      agreement: Lean<CommissionAgreementDocument>;
+      listing: Lean<ListingDocument>;
+    }
+  | {
+      eligible: false;
+      reason?: string;
+      authorization?: Lean<BrokerAuthorizationDocument>;
+      agreement?: Lean<CommissionAgreementDocument>;
+      listing?: Lean<ListingDocument>;
+    }
+> {
   await connectToDatabase();
 
-  const profile = (await BrokerProfile.findOne({ userId: brokerUserId }).lean()) as any;
-  if (!profile || profile.status !== "verified") {
+  const profile = (await BrokerProfile.findOne({
+    userId: brokerUserId,
+  }).lean()) as Lean<BrokerProfileDocument> | null;
+  if (profile?.status !== "verified") {
     return { eligible: false, reason: "Broker profile is not verified" };
   }
 
-  const listing = (await Listing.findById(listingId).lean()) as any;
-  if (!listing || listing.state !== "active" || listing.deletedAt) {
+  const listing = (await Listing.findById(listingId).lean()) as Lean<ListingDocument> | null;
+  if (listing?.state !== "active" || listing.deletedAt) {
     return { eligible: false, reason: "Listing is not active or does not exist" };
   }
 
@@ -511,7 +553,7 @@ export async function canBrokerDistributeListing(
     brokerId: brokerUserId,
     status: "active",
     $or: scopes,
-  }).lean()) as any;
+  }).lean()) as Lean<BrokerAuthorizationDocument> | null;
 
   if (!authorization) {
     return {
@@ -531,7 +573,7 @@ export async function canBrokerDistributeListing(
     brokerId: brokerUserId,
     status: "active",
     $or: scopes,
-  }).lean()) as any;
+  }).lean()) as Lean<CommissionAgreementDocument> | null;
 
   if (!agreement) {
     return {
@@ -564,7 +606,7 @@ export async function createBrokerListingPublisher(brokerUserId: string, listing
     publisherUserId: brokerUserId,
     publisherRole: "broker",
     state: "active",
-  }).lean()) as any;
+  }).lean()) as Lean<ListingPublisherDocument> | null;
 
   if (existing) {
     return existing;
@@ -582,7 +624,9 @@ export async function createBrokerListingPublisher(brokerUserId: string, listing
     createdByUserId: brokerUserId,
   });
 
-  const publisherDoc = (await ListingPublisher.findById(publisher._id).lean()) as any;
+  const publisherDoc = (await ListingPublisher.findById(
+    publisher._id,
+  ).lean()) as Lean<ListingPublisherDocument>;
 
   await writeAuditEvent({
     actor: { userId: brokerUserId, role: "broker" },

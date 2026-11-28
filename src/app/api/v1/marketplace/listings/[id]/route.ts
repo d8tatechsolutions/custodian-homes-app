@@ -67,7 +67,12 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     return NextResponse.json({ error: "Listing details unavailable" }, { status: 404 });
   }
 
-  const projection = toPublicListingProjection(listing as any, property, unit, matchedPublisher);
+  const projection = toPublicListingProjection(
+    listing as Parameters<typeof toPublicListingProjection>[0],
+    property,
+    unit,
+    matchedPublisher,
+  );
 
   return NextResponse.json(
     { listing: projection },

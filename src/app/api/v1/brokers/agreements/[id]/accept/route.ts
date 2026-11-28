@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { authenticateSession } from "@/lib/auth-scope";
 import { acceptCommissionAgreement } from "@/lib/brokers";
+import { publicErrorMessage } from "@/lib/public-error";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await authenticateSession(request);
@@ -19,9 +20,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const updated = await acceptCommissionAgreement(auth.userId, id);
     return NextResponse.json({ agreement: updated });
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: err?.message || "Failed to accept agreement" },
+      { error: publicErrorMessage(err, "Failed to accept agreement") },
       { status: 400 },
     );
   }

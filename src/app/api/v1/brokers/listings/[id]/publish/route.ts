@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { authenticateSession } from "@/lib/auth-scope";
 import { createBrokerListingPublisher } from "@/lib/brokers";
+import { publicErrorMessage } from "@/lib/public-error";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await authenticateSession(request);
@@ -23,9 +24,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       publisher,
       shareUrl: `/marketplace/${id}?ref=${publisher.shareCode}`,
     });
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: err?.message || "Failed to publish listing for broker" },
+      { error: publicErrorMessage(err, "Failed to publish listing for broker") },
       { status: 400 },
     );
   }

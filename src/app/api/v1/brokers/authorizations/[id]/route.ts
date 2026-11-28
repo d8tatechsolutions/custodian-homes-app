@@ -6,6 +6,7 @@ import { readJsonBody } from "@/app/api/v1/_helpers";
 import { authenticateSession } from "@/lib/auth-scope";
 import { revokeBrokerAuthorization } from "@/lib/brokers";
 import { connectToDatabase } from "@/lib/mongoose";
+import { publicErrorMessage } from "@/lib/public-error";
 import { User } from "@/models/User";
 
 const patchSchema = z.object({
@@ -48,9 +49,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
 
     return NextResponse.json({ authorization: updated });
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: err?.message || "Failed to update authorization" },
+      { error: publicErrorMessage(err, "Failed to update authorization") },
       { status: 400 },
     );
   }

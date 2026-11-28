@@ -227,7 +227,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "GET" });
+      await fetch("/api/auth/logout", { method: "POST" });
     } catch {
       /* ignore */
     } finally {

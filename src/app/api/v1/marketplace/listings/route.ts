@@ -131,7 +131,12 @@ export async function GET(request: NextRequest) {
     const unit = unitMap.get(String(listing.unitId)) || {};
     const publisher = publisherMap.get(String(listing._id)) || null;
 
-    return toPublicListingProjection(listing as any, property, unit, publisher);
+    return toPublicListingProjection(
+      listing as Parameters<typeof toPublicListingProjection>[0],
+      property,
+      unit,
+      publisher,
+    );
   });
 
   const totalPages = Math.ceil(total / limit);

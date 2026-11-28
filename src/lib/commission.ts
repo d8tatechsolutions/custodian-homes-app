@@ -7,13 +7,17 @@ import type {
 } from "@/lib/domain-enums";
 import { getUsdKesRateOn } from "@/lib/fx";
 import { convertMinor } from "@/lib/fx-math";
+import type { Lean } from "@/lib/lean";
 import { connectToDatabase } from "@/lib/mongoose";
 import { toMinorUnits } from "@/lib/payments/provider";
 import type { Role } from "@/lib/permissions";
-import { Attribution } from "@/models/Attribution";
-import { CommissionAccrual } from "@/models/CommissionAccrual";
-import { CommissionAgreement } from "@/models/CommissionAgreement";
-import { CommissionPayout } from "@/models/CommissionPayout";
+import { Attribution, type AttributionDocument } from "@/models/Attribution";
+import { CommissionAccrual, type CommissionAccrualDocument } from "@/models/CommissionAccrual";
+import {
+  CommissionAgreement,
+  type CommissionAgreementDocument,
+} from "@/models/CommissionAgreement";
+import { CommissionPayout, type CommissionPayoutDocument } from "@/models/CommissionPayout";
 
 export const COMMISSION_CURRENCY = "KES";
 export const DEFAULT_TAX_BPS = 0;
@@ -134,8 +138,8 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 interface CommissionContext {
-  attribution: any;
-  agreement: any;
+  attribution: Lean<AttributionDocument>;
+  agreement: Lean<CommissionAgreementDocument>;
   calculation: CommissionCalculation;
   leaseId: string;
   invoiceId: string;
@@ -151,12 +155,12 @@ async function resolveCommissionContext(
   const attribution = (await Attribution.findOne({
     leaseId,
     status: "confirmed",
-  }).lean()) as any;
-  if (!attribution || !attribution.brokerUserId) return null;
+  }).lean()) as Lean<AttributionDocument> | null;
+  if (!attribution?.brokerUserId) return null;
 
   const agreement = (await CommissionAgreement.findById(
     attribution.commissionAgreementId,
-  ).lean()) as any | null;
+  ).lean()) as Lean<CommissionAgreementDocument> | null;
   if (!agreement) return null;
 
   const priorInitial = await CommissionAccrual.countDocuments({
@@ -171,7 +175,8 @@ async function resolveCommissionContext(
       basis: agreement.basis,
       rateBps: agreement.rateBps,
       fixedAmountMinor: agreement.fixedAmountMinor,
-      taxBps: agreement.taxBps ?? DEFAULT_TAX_BPS,
+      // Agreements have no taxBps field yet, so this is the default today.
+      taxBps: (agreement as { taxBps?: number }).taxBps ?? DEFAULT_TAX_BPS,
       currency: agreement.currency,
     },
     collectedRentMinor: toMinorUnits(collectedRentMajor),
@@ -233,9 +238,11 @@ export async function accrueCommissionForSettledInvoice(invoice: SettledInvoiceL
         basis: agreement.basis,
         rateBps: agreement.rateBps ?? 0,
         fixedAmountMinor: agreement.fixedAmountMinor ?? 0,
-        taxBps: agreement.taxBps ?? DEFAULT_TAX_BPS,
+        // Agreements have no taxBps field yet, so this is the default today.
+        taxBps: (agreement as { taxBps?: number }).taxBps ?? DEFAULT_TAX_BPS,
         currency: calculation.currency,
-        paymentTerms: agreement.paymentTerms || "",
+        // Agreements have no paymentTerms field yet, so this is "" today.
+        paymentTerms: (agreement as { paymentTerms?: string }).paymentTerms || "",
       },
       basisMinor: calculation.basisMinor,
       grossMinor: calculation.grossMinor,
@@ -247,7 +254,9 @@ export async function accrueCommissionForSettledInvoice(invoice: SettledInvoiceL
       metadata: { shadow: true },
     });
 
-    const createdDoc = (await CommissionAccrual.findById(created._id).lean()) as any;
+    const createdDoc = (await CommissionAccrual.findById(
+      created._id,
+    ).lean()) as Lean<CommissionAccrualDocument>;
 
     await writeAuditEvent({
       actor: { userId: "system", role: "system" },
@@ -268,7 +277,7 @@ export async function accrueCommissionForSettledInvoice(invoice: SettledInvoiceL
         attributionId: String(attribution._id),
         invoiceId,
         kind: calculation.kind,
-      }).lean()) as any;
+      }).lean()) as Lean<CommissionAccrualDocument> | null;
     }
     throw error;
   }
@@ -299,7 +308,9 @@ export async function approveAccrual(actor: CommissionActor, accrualId: string) 
   await connectToDatabase();
   assertRole(actor, ["admin", "system-admin"], "Only administrators can approve commission");
 
-  const accrual = (await CommissionAccrual.findById(accrualId).lean()) as any;
+  const accrual = (await CommissionAccrual.findById(
+    accrualId,
+  ).lean()) as Lean<CommissionAccrualDocument> | null;
   if (!accrual) throw new Error("Commission accrual not found");
   if (accrual.status !== "eligible") {
     throw new Error(`Only eligible accruals can be approved (current: ${accrual.status})`);
@@ -310,7 +321,9 @@ export async function approveAccrual(actor: CommissionActor, accrualId: string) 
     { $set: { status: "approved", approvedByUserId: actor.userId, approvedAt: new Date() } },
   );
 
-  const updated = (await CommissionAccrual.findById(accrualId).lean()) as any;
+  const updated = (await CommissionAccrual.findById(
+    accrualId,
+  ).lean()) as Lean<CommissionAccrualDocument>;
 
   await writeAuditEvent({
     actor,
@@ -386,7 +399,9 @@ export async function createPayoutBatch(
   };
   if (accrualIds?.length) filter._id = { $in: accrualIds };
 
-  const accruals = (await CommissionAccrual.find(filter).lean()) as any[];
+  const accruals = (await CommissionAccrual.find(
+    filter,
+  ).lean()) as Lean<CommissionAccrualDocument>[];
   if (accruals.length === 0) {
     throw new Error("No approved commission accruals are ready for payout");
   }
@@ -416,7 +431,9 @@ export async function createPayoutBatch(
     ...(totals.fx ? { fx: totals.fx } : {}),
   });
 
-  const payoutDoc = (await CommissionPayout.findById(payout._id).lean()) as any;
+  const payoutDoc = (await CommissionPayout.findById(
+    payout._id,
+  ).lean()) as Lean<CommissionPayoutDocument>;
 
   await CommissionAccrual.updateMany(
     { _id: { $in: accruals.map((a) => a._id) } },
@@ -451,7 +468,9 @@ export async function executePayout(
     throw new Error("Commission payouts are disabled (shadow mode)");
   }
 
-  const payout = (await CommissionPayout.findById(payoutId).lean()) as any;
+  const payout = (await CommissionPayout.findById(
+    payoutId,
+  ).lean()) as Lean<CommissionPayoutDocument> | null;
   if (!payout) throw new Error("Commission payout not found");
   if (payout.status !== "approved") {
     throw new Error(`Payout cannot be executed from status '${payout.status}'`);
@@ -464,7 +483,7 @@ export async function executePayout(
     const accruals = (await CommissionAccrual.find({
       payoutId,
       status: "approved",
-    }).lean()) as any[];
+    }).lean()) as Lean<CommissionAccrualDocument>[];
     const totals = await kesPayoutTotals(accruals, paidAt);
     fxSet = {
       grossMinor: totals.grossMinor,
@@ -491,7 +510,9 @@ export async function executePayout(
     { $set: { status: "paid", paidAt } },
   );
 
-  const updated = (await CommissionPayout.findById(payoutId).lean()) as any;
+  const updated = (await CommissionPayout.findById(
+    payoutId,
+  ).lean()) as Lean<CommissionPayoutDocument>;
 
   await writeAuditEvent({
     actor,
@@ -509,7 +530,9 @@ export async function failPayout(actor: CommissionActor, payoutId: string, reaso
   await connectToDatabase();
   assertRole(actor, ["system-admin"], "Only a system administrator can fail a payout");
 
-  const payout = (await CommissionPayout.findById(payoutId).lean()) as any;
+  const payout = (await CommissionPayout.findById(
+    payoutId,
+  ).lean()) as Lean<CommissionPayoutDocument> | null;
   if (!payout) throw new Error("Commission payout not found");
   if (payout.status === "paid") throw new Error("A paid payout is immutable");
 
@@ -523,7 +546,9 @@ export async function failPayout(actor: CommissionActor, payoutId: string, reaso
     { $set: { status: "approved", payoutId: "" } },
   );
 
-  const updated = (await CommissionPayout.findById(payoutId).lean()) as any;
+  const updated = (await CommissionPayout.findById(
+    payoutId,
+  ).lean()) as Lean<CommissionPayoutDocument>;
 
   await writeAuditEvent({
     actor,
@@ -540,7 +565,9 @@ export async function createClawback(actor: CommissionActor, accrualId: string, 
   await connectToDatabase();
   assertRole(actor, ["system-admin"], "Only a system administrator can claw back commission");
 
-  const accrual = (await CommissionAccrual.findById(accrualId).lean()) as any;
+  const accrual = (await CommissionAccrual.findById(
+    accrualId,
+  ).lean()) as Lean<CommissionAccrualDocument> | null;
   if (!accrual) throw new Error("Commission accrual not found");
   if (accrual.status === "reversed" || accrual.kind === "clawback") {
     throw new Error("This accrual has already been reversed");
@@ -561,7 +588,9 @@ export async function createClawback(actor: CommissionActor, accrualId: string, 
       after: { status: "reversed", reason },
     });
 
-    return (await CommissionAccrual.findById(accrualId).lean()) as any;
+    return (await CommissionAccrual.findById(
+      accrualId,
+    ).lean()) as Lean<CommissionAccrualDocument> | null;
   }
 
   const clawbackWindowDays = commissionClawbackWindowDays();
@@ -590,7 +619,9 @@ export async function createClawback(actor: CommissionActor, accrualId: string, 
     metadata: { clawsBackAccrualId: String(accrual._id), reason },
   });
 
-  const clawbackDoc = (await CommissionAccrual.findById(clawback._id).lean()) as any;
+  const clawbackDoc = (await CommissionAccrual.findById(
+    clawback._id,
+  ).lean()) as Lean<CommissionAccrualDocument>;
 
   await writeAuditEvent({
     actor,
@@ -622,14 +653,16 @@ export interface CommissionReconciliationReport {
 export async function reconcileCommissions(): Promise<CommissionReconciliationReport> {
   await connectToDatabase();
 
-  const paid = (await CommissionAccrual.find({ status: "paid" }).lean()) as any[];
+  const paid = (await CommissionAccrual.find({
+    status: "paid",
+  }).lean()) as Lean<CommissionAccrualDocument>[];
   const liveAccruals = (await CommissionAccrual.find({ status: { $ne: "reversed" } })
     .select("_id attributionId invoiceId kind")
-    .lean()) as any[];
+    .lean()) as Lean<CommissionAccrualDocument>[];
   const payoutIds = [...new Set(paid.map((a) => String(a.payoutId || "")).filter(Boolean))];
   const payouts = (await CommissionPayout.find({ _id: { $in: payoutIds } })
     .select("_id status")
-    .lean()) as any[];
+    .lean()) as Lean<CommissionPayoutDocument>[];
   const payoutStatus = new Map(payouts.map((p) => [String(p._id), String(p.status)]));
 
   const paidWithoutBatch: Array<{ accrualId: string; payoutId: string }> = [];

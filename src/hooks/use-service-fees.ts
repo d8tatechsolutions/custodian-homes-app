@@ -26,6 +26,7 @@ export function usePropertyServiceFees(propertyId: string | undefined) {
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `reload` is a refetch trigger (bumped by refetch), not read inside.
   useEffect(() => {
     if (!propertyId) {
       setLoading(false);

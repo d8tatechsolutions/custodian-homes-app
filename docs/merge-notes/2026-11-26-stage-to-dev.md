@@ -324,17 +324,38 @@ still pending; nothing here depends on them).
   - On the dev database: the board's mouse, keyboard and phone moves, and the owner fallback.
     Test data was removed afterwards.
 
+## Sign-out, dependencies, types and lint (2026-11-28, later)
+
+- **Sign-out** is a POST now (covered by the proxy's same-origin check). A GET still works only
+  when the browser marks it `Sec-Fetch-Site: same-origin` (tabs on the previous build), so a
+  link or image on another site can no longer sign people out.
+- **`npm audit`: 0 vulnerabilities.**
+  - `overrides["@effect/platform"] = "0.97.4"` patches the advisory UploadThing 7.7.4 pulled
+    in (it pins 0.90.3). Every `@effect/platform` function UploadThing calls exists in 0.97.4.
+    Its HTTP client calls were run against a local server, and the existing `effect 3.22.4`
+    override meets the new peer range. **When UploadThing ships a release on a patched version,
+    drop this override.**
+  - `vitest` and `@vitest/coverage-v8` are on `~5.0.5` (patched; 5.1.x was too new to
+    adopt). `vitest` moved to devDependencies.
+- **No explicit `any` left** (it was 145). `lib/lean.ts` types `.lean()` results from each
+  model's schema. Eligibility and share-code results are discriminated unions. The broker routes
+  now return generic errors via `publicErrorMessage`. No runtime changes.
+- **Found while typing (behaviour unchanged, client decision):** `CommissionAgreement` has
+  no `taxBps` or `paymentTerms` field, so every accrual uses the default tax rate
+  (`DEFAULT_TAX_BPS`) and empty payment terms. Add the fields if agreements should carry their
+  own values.
+- **Lint: 0 warnings** (was 159). The tenant requests unit fetch keys on a stable id string; the
+  service-fee refetch counter is documented as a deliberate trigger.
+
 ## Still open
 
-- UploadThing has no patched 7.x release for the current advisory, and private files need a
-  paid plan. Task photos and receipts rely on unguessable links that are only returned to
-  people allowed to see the task.
+- Private files need a paid UploadThing plan. Task photos and receipts rely on unguessable
+  links that are only returned to people allowed to see the task.
 - The general rate limiter and the new per-IP ceiling are in memory per server instance.
   Large distributed floods are handled by Vercel's built-in network protection. Vercel's
   Firewall rules and Attack Challenge Mode are dashboard settings, left to the client.
 - **Atlas backups are inactive** on the cluster (Tokyo, 3-node replica set). Turn on
   continuous or snapshot backups in Atlas; nothing in the app can replace them.
-- About 125 `any` warnings remain in the broker, attribution and commission code.
 - About 150 free-text fields have no individual length cap. The 1 MB body limit bounds them.
 
 ## Local `.env` note
