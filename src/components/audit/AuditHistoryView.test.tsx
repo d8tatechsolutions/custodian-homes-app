@@ -21,6 +21,8 @@ const entry = {
   notes: [],
 };
 
+type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
+
 function respond(body: unknown, ok = true) {
   return Promise.resolve({ ok, json: async () => body } as Response);
 }
@@ -37,7 +39,7 @@ afterEach(() => {
 
 describe("AuditHistoryView", () => {
   it("lists entries with who, where and the changed fields", async () => {
-    const fetchMock = vi.fn(() => respond(page(false)));
+    const fetchMock = vi.fn<FetchFn>(() => respond(page(false)));
     vi.stubGlobal("fetch", fetchMock);
     render(<AuditHistoryView />);
 
@@ -53,7 +55,7 @@ describe("AuditHistoryView", () => {
   });
 
   it("lets the platform admin add a note without changing the entry", async () => {
-    const fetchMock = vi.fn((url: string) =>
+    const fetchMock = vi.fn<FetchFn>((url) =>
       url.includes("/notes")
         ? respond({
             data: { id: "n1", authorName: "Admin", text: "Confirmed", createdAt: "" },
@@ -68,10 +70,8 @@ describe("AuditHistoryView", () => {
     await userEvent.click(screen.getByRole("button", { name: /save note/i }));
 
     expect(await screen.findByText("Confirmed")).toBeInTheDocument();
-    const [url, init] = fetchMock.mock.calls.find(([u]) => String(u).includes("/notes")) as [
-      string,
-      RequestInit,
-    ];
+    const call = fetchMock.mock.calls.find(([u]) => u.includes("/notes"));
+    const [url, init = {}] = call ?? [""];
     expect(url).toBe("/api/v1/audit/e1/notes");
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({ text: "Confirmed" });
