@@ -283,7 +283,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       $set: updates,
       $inc: { version: 1 },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
 
   if (!updatedListing) {

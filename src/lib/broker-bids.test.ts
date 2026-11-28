@@ -227,7 +227,7 @@ describe("decideBid", () => {
     expect(s.bid.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: "bid-1", status: "pending" },
       { $set: expect.objectContaining({ status: "accepted", decidedByUserId: "cust-1" }) },
-      { new: true },
+      { returnDocument: "after" },
     );
   });
 

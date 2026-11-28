@@ -140,7 +140,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     },
     updateData,
     {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     },
   ).lean();

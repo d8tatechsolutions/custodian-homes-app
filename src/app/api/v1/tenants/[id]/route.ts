@@ -152,7 +152,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 
   const updated = await Tenant.findOneAndUpdate({ _id: id }, updateData, {
-    new: true,
+    returnDocument: "after",
     runValidators: true,
   })
     .select(TENANT_SAFE_FIELDS)

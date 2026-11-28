@@ -196,7 +196,7 @@ describe("status", () => {
     expect(task.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: TASK, status: "open" },
       { $set: expect.objectContaining({ status: "done" }) },
-      { new: true },
+      { returnDocument: "after" },
     );
     expect(complaint.updateMany).toHaveBeenCalledWith(
       { _id: { $in: [COMPLAINT] }, status: { $ne: "resolved" } },

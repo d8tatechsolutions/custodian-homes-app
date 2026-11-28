@@ -315,7 +315,7 @@ describe("PATCH /api/v1/leads/[id]", () => {
         $or: [{ propertyId: { $in: [makeObjectId("prop")] } }],
       },
       { status: "contacted" },
-      { new: true },
+      { returnDocument: "after" },
     );
     const body = await json(res);
     expect((body.data as { status?: string }).status).toBe("contacted");
@@ -387,7 +387,7 @@ describe("PATCH /api/v1/leads/[id]", () => {
         convertedAt: expect.any(Date),
         convertedTenantId: String(createdTenant._id),
       }),
-      { new: true },
+      { returnDocument: "after" },
     );
     const body = await json(res);
     expect(body.convertedTenantId).toBe(String(createdTenant._id));
@@ -441,7 +441,7 @@ describe("PATCH /api/v1/leads/[id]", () => {
         $or: [{ propertyId: { $in: [PROP_ID] } }],
       },
       { status: "contacted" },
-      { new: true },
+      { returnDocument: "after" },
     );
   });
 });

@@ -54,7 +54,7 @@ describe("nextInvoiceNumber", () => {
     expect(user.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: OWNER_ID },
       { $inc: { "invoiceCounters.2026-09": 1 } },
-      { new: true, upsert: false },
+      { returnDocument: "after", upsert: false },
     );
   });
 
@@ -108,7 +108,7 @@ describe("reserveInvoiceNumbers", () => {
     expect(user.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: OWNER_ID },
       { $inc: { "invoiceCounters.2026-09": 3 } },
-      { new: true, upsert: false },
+      { returnDocument: "after", upsert: false },
     );
   });
 

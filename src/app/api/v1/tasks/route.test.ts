@@ -220,7 +220,7 @@ describe("GET /api/v1/tasks", () => {
     expect(task.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: TASK_ID, ownerId: ADMIN_ID, propertyId: PROPERTY_ID },
       expect.objectContaining({ title: "Updated by owner" }),
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
     const body = await json(res);
     expect((body.data as Record<string, unknown>).title).toBe("Updated by owner");

@@ -240,7 +240,7 @@ describe("acceptAssignment", () => {
     expect(models.managementAssignment.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: String(ASSIGNMENT_ID), principalUserId: PRINCIPAL_ID, status: "pending" },
       { $set: { status: "active", acceptedAt: NOW } },
-      { new: true },
+      { returnDocument: "after" },
     );
     expect(models.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({ action: "assignment.accept" }),

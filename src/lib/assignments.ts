@@ -282,7 +282,7 @@ export async function acceptAssignment(
   const accepted = await ManagementAssignment.findOneAndUpdate(
     { _id: assignmentId, principalUserId, status: "pending" },
     { $set: { status: "active", acceptedAt: now } },
-    { new: true },
+    { returnDocument: "after" },
   ).lean();
   if (!accepted) {
     throw new AssignmentError("conflict", "Only pending assignments can be accepted");

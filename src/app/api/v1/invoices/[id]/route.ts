@@ -134,7 +134,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
   // Guarded on draft so a concurrent issue cannot be overwritten.
   const updated = await Invoice.findOneAndUpdate({ _id: id, status: "draft" }, updateData, {
-    new: true,
+    returnDocument: "after",
     runValidators: true,
   }).lean();
   if (!updated) {

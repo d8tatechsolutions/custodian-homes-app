@@ -53,7 +53,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     { _id: id, ownerId: loaded.actor.userId },
     { $set: set },
     {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     },
   ).lean();

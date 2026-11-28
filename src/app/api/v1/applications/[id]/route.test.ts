@@ -320,7 +320,7 @@ describe("PATCH /api/v1/applications/[id]", () => {
     expect(unit.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: UNIT_ID, status: "available", deletedAt: null },
       { $addToSet: { tenantId: TENANT_ID }, $set: { status: "occupied" } },
-      { new: true },
+      { returnDocument: "after" },
     );
     expect(lease.create).toHaveBeenCalledWith(
       expect.objectContaining({ unitId: UNIT_ID, status: "active" }),

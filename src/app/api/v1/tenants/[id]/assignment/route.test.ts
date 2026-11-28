@@ -149,7 +149,7 @@ describe("POST /api/v1/tenants/[id]/assignment", () => {
     expect(unitStub.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: UNIT_ID, status: "available", deletedAt: null },
       { $addToSet: { tenantId: OCCUPANT_USER_ID }, $set: { status: "occupied" } },
-      { new: true },
+      { returnDocument: "after" },
     );
     expect(lease.create).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: TENANT_ID, status: "active" }),

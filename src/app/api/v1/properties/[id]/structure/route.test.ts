@@ -226,7 +226,7 @@ describe("PUT /api/v1/properties/[id]/structure", () => {
     expect(property.findByIdAndUpdate).toHaveBeenCalledWith(
       PROPERTY_ID,
       { blocks: expect.any(Array) },
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
     const body = await json(res);
     expect(body.summary).toMatchObject({ unitsCreated: 2, unitsDeleted: 0 });

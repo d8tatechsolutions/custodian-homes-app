@@ -75,7 +75,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   updateData.notes = invoice.notes ? `${invoice.notes}\n${voidNote}` : voidNote;
 
   const updated = await Invoice.findOneAndUpdate({ _id: id }, updateData, {
-    new: true,
+    returnDocument: "after",
     runValidators: true,
   }).lean();
   if (!updated) {

@@ -73,7 +73,7 @@ describe("allocateUnit", () => {
     expect(unitStub.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: String(UNIT_ID), status: "available", deletedAt: null },
       { $addToSet: { tenantId: OCCUPANT }, $set: { status: "occupied" } },
-      { new: true },
+      { returnDocument: "after" },
     );
     expect(lease.create).toHaveBeenCalledWith(
       expect.objectContaining({

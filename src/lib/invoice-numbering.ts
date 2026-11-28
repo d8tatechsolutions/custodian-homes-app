@@ -30,7 +30,7 @@ export async function nextInvoiceNumber(
       const account = await BillingAccount.findOneAndUpdate(
         { _id: options.billingAccountId },
         { $inc: { [`invoiceCounters.${period}`]: 1 } },
-        { new: true, upsert: false },
+        { returnDocument: "after", upsert: false },
       )
         .select("invoicePrefix invoiceCounters")
         .lean();
@@ -52,7 +52,7 @@ export async function nextInvoiceNumber(
   const user = await User.findOneAndUpdate(
     { _id: ownerId },
     { $inc: { [`invoiceCounters.${period}`]: 1 } },
-    { new: true, upsert: false },
+    { returnDocument: "after", upsert: false },
   )
     .select("invoiceCounters")
     .lean();
@@ -88,7 +88,7 @@ export async function reserveInvoiceNumbers(
       const account = await BillingAccount.findOneAndUpdate(
         { _id: options.billingAccountId },
         { $inc: { [`invoiceCounters.${period}`]: count } },
-        { new: true, upsert: false },
+        { returnDocument: "after", upsert: false },
       )
         .select("invoicePrefix invoiceCounters")
         .lean();
@@ -110,7 +110,7 @@ export async function reserveInvoiceNumbers(
     const user = await User.findOneAndUpdate(
       { _id: ownerId },
       { $inc: { [`invoiceCounters.${period}`]: count } },
-      { new: true, upsert: false },
+      { returnDocument: "after", upsert: false },
     )
       .select("invoiceCounters")
       .lean();

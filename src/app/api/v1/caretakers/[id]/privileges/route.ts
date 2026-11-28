@@ -89,7 +89,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
   }
 
   const updated = await User.findOneAndUpdate({ _id: id }, update, {
-    new: true,
+    returnDocument: "after",
     runValidators: true,
   })
     .select("name email phone privileges userCode")

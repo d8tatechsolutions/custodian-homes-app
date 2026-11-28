@@ -658,7 +658,7 @@ describe("POST /api/v1/invoices", () => {
     expect(user.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: OWNER_ID },
       { $inc: { [`invoiceCounters.${expectedPeriod}`]: 1 } },
-      { new: true, upsert: false },
+      { returnDocument: "after", upsert: false },
     );
     expect(invoiceStub.create).toHaveBeenCalledWith(
       expect.objectContaining({

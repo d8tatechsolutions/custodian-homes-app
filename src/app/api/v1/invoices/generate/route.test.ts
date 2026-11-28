@@ -231,7 +231,7 @@ describe("POST /api/v1/invoices/generate", () => {
     expect(user.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: OWNER_ID },
       { $inc: { [`invoiceCounters.${period}`]: 2 } },
-      { new: true, upsert: false },
+      { returnDocument: "after", upsert: false },
     );
     expect(invoiceStub.insertMany).toHaveBeenCalledTimes(1);
     const [drafts, options] = invoiceStub.insertMany.mock.calls[0] as [

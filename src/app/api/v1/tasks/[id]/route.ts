@@ -158,7 +158,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const updated = await Task.findOneAndUpdate(
     { _id: id, ownerId: task.ownerId, propertyId: task.propertyId },
     updateData,
-    { new: true, runValidators: true },
+    { returnDocument: "after", runValidators: true },
   ).lean();
   if (!updated) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });

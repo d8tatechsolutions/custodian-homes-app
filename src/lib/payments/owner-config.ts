@@ -157,7 +157,7 @@ export async function saveOwnerPaymentConfig(
   await OwnerPaymentConfig.findOneAndUpdate(
     { ownerId },
     { $set: set, $setOnInsert: { ownerId } },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
+    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
   );
   return getOwnerPaymentConfigView(ownerId);
 }

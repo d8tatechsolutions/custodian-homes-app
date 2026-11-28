@@ -259,7 +259,7 @@ export async function applyProviderPayment(
         paidByRole: "tenant",
       },
     },
-    { new: true, runValidators: true },
+    { returnDocument: "after", runValidators: true },
   ).lean();
 
   if (!updated) {

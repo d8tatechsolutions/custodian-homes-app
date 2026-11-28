@@ -101,7 +101,7 @@ describe("PATCH /api/v1/notifications/[id]", () => {
     expect(notification.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: NOTIF_ID, recipientUserId: USER_ID },
       { $set: { readAt: expect.any(Date) } },
-      { new: true },
+      { returnDocument: "after" },
     );
   });
 
