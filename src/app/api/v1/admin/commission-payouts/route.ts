@@ -5,6 +5,7 @@ import { createPayoutBatch } from "@/lib/commission";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
 import { authenticate, type Role } from "@/lib/permissions";
+import { publicErrorMessage } from "@/lib/public-error";
 import { CommissionPayout } from "@/models/CommissionPayout";
 import { User } from "@/models/User";
 
@@ -75,8 +76,9 @@ export async function POST(request: NextRequest) {
     );
     return NextResponse.json({ data: payout }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to create payout";
-    const status = message.includes("No approved") ? 409 : 400;
+    const raw = error instanceof Error ? error.message : "";
+    const message = publicErrorMessage(error, "Failed to create payout");
+    const status = raw.includes("No approved") ? 409 : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

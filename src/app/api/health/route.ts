@@ -11,9 +11,8 @@ export async function GET() {
     }
     return NextResponse.json({ status: "ok", db: "connected" });
   } catch (err) {
-    return NextResponse.json(
-      { status: "error", db: "unreachable", error: (err as Error)?.message },
-      { status: 503 },
-    );
+    // The driver's message can name the cluster host; keep it in the server log.
+    console.error("[health] database unreachable:", err);
+    return NextResponse.json({ status: "error", db: "unreachable" }, { status: 503 });
   }
 }

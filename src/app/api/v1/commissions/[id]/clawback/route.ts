@@ -6,6 +6,7 @@ import { authenticateSession } from "@/lib/auth-scope";
 import { createClawback } from "@/lib/commission";
 import { connectToDatabase } from "@/lib/mongoose";
 import type { Role } from "@/lib/permissions";
+import { publicErrorMessage } from "@/lib/public-error";
 import { User } from "@/models/User";
 
 const clawbackInput = z.object({
@@ -45,8 +46,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     );
     return NextResponse.json({ data: accrual });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to claw back commission";
-    const status = message.includes("not found") ? 404 : 400;
+    const raw = error instanceof Error ? error.message : "";
+    const message = publicErrorMessage(error, "Failed to claw back commission");
+    const status = raw.includes("not found") ? 404 : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

@@ -5,6 +5,7 @@ import {
 } from "@/lib/brokers";
 import { resolveCostApprover } from "@/lib/maintenance/approver";
 import type { Role } from "@/lib/permissions";
+import { publicErrorMessage } from "@/lib/public-error";
 import { BrokerAuthorization } from "@/models/BrokerAuthorization";
 import { BrokerBid, type BrokerBidStatus, OPEN_BID_STATUSES } from "@/models/BrokerBid";
 import { BrokerProfile } from "@/models/BrokerProfile";
@@ -314,10 +315,7 @@ export async function decideBid(
         { $set: { status: "pending", decidedByUserId: "", decidedAt: null } },
       );
       if (error instanceof BidError) throw error;
-      throw new BidError(
-        error instanceof Error ? error.message : "Could not approve the broker",
-        403,
-      );
+      throw new BidError(publicErrorMessage(error, "Could not approve the broker"), 403);
     }
   }
   return (await BrokerBid.findById(bid._id).lean()) as BidDoc;
@@ -376,10 +374,7 @@ export async function respondToBid(
           { _id: bid._id },
           { $set: { status: "countered", decidedAt: null } },
         );
-        throw new BidError(
-          error instanceof Error ? error.message : "Could not complete the approval",
-          409,
-        );
+        throw new BidError(publicErrorMessage(error, "Could not complete the approval"), 409);
       }
     }
   }

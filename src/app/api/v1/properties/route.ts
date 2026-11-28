@@ -4,7 +4,11 @@ import { z } from "zod";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { normalizeAmenities } from "@/lib/amenities";
 import { DEFAULT_PROPERTY_PURPOSE, PROPERTY_PURPOSES } from "@/lib/domain-enums";
-import { normalizeUnitDuplex, normalizeUpperFloorMode } from "@/lib/duplex-layout";
+import {
+  DuplexLayoutError,
+  normalizeUnitDuplex,
+  normalizeUpperFloorMode,
+} from "@/lib/duplex-layout";
 import {
   getAssignedPropertyIds,
   getManagedOwnerId,
@@ -24,6 +28,7 @@ import {
   validatePropertyStaffAssignments,
 } from "@/lib/property-staff";
 import { isActivePropertyTypeKey } from "@/lib/property-type-store";
+import { publicErrorMessage } from "@/lib/public-error";
 import { blockInput, MAX_UNITS_PER_PROPERTY } from "@/lib/schemas/structure";
 import { buildUnitInserts, countRequestedUnits, validateBlockLayouts } from "@/lib/units";
 import { isPropertyImageUrl, MAX_PROPERTY_IMAGES, PROPERTY_IMAGE_ERROR } from "@/lib/upload-rules";
@@ -473,7 +478,7 @@ export async function POST(request: NextRequest) {
       // Structure generation failed — roll the property back so the client can
       // retry with a valid structure.
       await Property.deleteOne({ _id: property._id });
-      const message = error instanceof Error ? error.message : "Failed to generate units";
+      const message = publicErrorMessage(error, "Failed to generate units", [DuplexLayoutError]);
       return NextResponse.json({ error: message }, { status: 400 });
     }
   }

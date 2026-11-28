@@ -7,6 +7,7 @@ vi.mock("@/lib/mongoose", () => ({
 
 import mongoose from "mongoose";
 import { GET } from "@/app/api/health/route";
+import { connectToDatabase } from "@/lib/mongoose";
 
 describe("GET /api/health", () => {
   it("returns 200 ok when db connected", async () => {
@@ -33,5 +34,18 @@ describe("GET /api/health", () => {
       value: original,
       configurable: true,
     });
+  });
+
+  it("never reveals the driver error (it can name the cluster host)", async () => {
+    vi.mocked(connectToDatabase).mockRejectedValueOnce(
+      new Error("querySrv ENOTFOUND _mongodb._tcp.cluster0.example.mongodb.net"),
+    );
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await GET();
+    expect(res.status).toBe(503);
+    const text = await res.text();
+    expect(text).not.toContain("mongodb.net");
+    expect(JSON.parse(text)).toEqual({ status: "error", db: "unreachable" });
+    spy.mockRestore();
   });
 });
