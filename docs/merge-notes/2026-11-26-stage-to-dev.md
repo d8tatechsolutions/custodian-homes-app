@@ -344,6 +344,15 @@ still pending; nothing here depends on them).
   no `taxBps` or `paymentTerms` field, so every accrual uses the default tax rate
   (`DEFAULT_TAX_BPS`) and empty payment terms. Add the fields if agreements should carry their
   own values.
+- **Uploads:** a refused upload answered 500 because `UploadThingError` with only a message
+  defaults to `INTERNAL_SERVER_ERROR`. It now answers `FORBIDDEN` (403) when not signed in,
+  `BAD_REQUEST` (400) for a disallowed file, and `NOT_FOUND` (404) when the feature is off.
+- **Mongoose:** `returnDocument: "after"` replaces the deprecated `new: true` in all 37
+  `findOneAndUpdate` / `findByIdAndUpdate` calls. The deprecation warning was being logged
+  at error level in production. Same behaviour.
+- **Flaky test fixed:** the random user-code test failed about 1 run in 30 (birthday paradox
+  over 34^6 codes). It now allows up to 3 repeats in 10,000; more than that has odds of about
+  1 in 22 million.
 - **Lint: 0 warnings** (was 159). The tenant requests unit fetch keys on a stable id string; the
   service-fee refetch counter is documented as a deliberate trigger.
 
