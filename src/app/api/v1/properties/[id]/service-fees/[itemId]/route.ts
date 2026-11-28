@@ -55,7 +55,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     unitIds,
   };
   const updated = await ServiceFeeItem.findOneAndUpdate({ _id: itemId, propertyId: id }, updates, {
-    new: true,
+    returnDocument: "after",
     runValidators: true,
   }).lean();
   if (!updated) {
@@ -78,7 +78,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   const updated = await ServiceFeeItem.findOneAndUpdate(
     { _id: itemId, propertyId: id },
     { $set: { active: false } },
-    { new: true },
+    { returnDocument: "after" },
   ).lean();
   if (!updated) {
     return NextResponse.json({ error: "Service fee not found" }, { status: 404 });

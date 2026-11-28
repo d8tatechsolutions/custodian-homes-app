@@ -121,7 +121,7 @@ export async function allocateUnit(
   const claimed = (await Unit.findOneAndUpdate(
     { _id: input.unitId, status: "available", deletedAt: null },
     { $addToSet: { tenantId: occupantUserId }, $set: { status: "occupied" } },
-    { new: true },
+    { returnDocument: "after" },
   ).lean()) as AllocatedUnit | null;
   if (!claimed) {
     throw new AllocationError(409, "That unit is no longer vacant");

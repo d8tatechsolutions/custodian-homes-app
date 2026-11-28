@@ -205,7 +205,7 @@ export async function nextBillingAccountInvoiceNumber(
   const account = await BillingAccount.findOneAndUpdate(
     { _id: billingAccountId },
     { $inc: { [`invoiceCounters.${period}`]: 1 } },
-    { new: true, upsert: false },
+    { returnDocument: "after", upsert: false },
   )
     .select("invoicePrefix invoiceCounters")
     .lean();

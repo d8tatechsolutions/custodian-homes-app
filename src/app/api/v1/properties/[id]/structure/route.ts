@@ -159,7 +159,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
   const updated = await Property.findByIdAndUpdate(
     id,
     { blocks: plan.blocks },
-    { new: true, runValidators: true },
+    { returnDocument: "after", runValidators: true },
   ).lean();
 
   if (authUser) {

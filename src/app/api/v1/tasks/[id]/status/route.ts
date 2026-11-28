@@ -77,7 +77,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const updated = await Task.findOneAndUpdate(
     { _id: task._id, status: from },
     { $set: set },
-    { new: true },
+    { returnDocument: "after" },
   ).lean();
   if (!updated) {
     return NextResponse.json(

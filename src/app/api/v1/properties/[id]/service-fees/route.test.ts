@@ -209,7 +209,7 @@ describe("property service-fee routes", () => {
     expect(serviceFeeItem.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: ITEM_ID, propertyId: PROPERTY_ID },
       { $set: { active: false } },
-      { new: true },
+      { returnDocument: "after" },
     );
   });
 

@@ -120,7 +120,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
   const doc = await PropertyOperations.findOneAndUpdate(
     { propertyId: id },
     { $set: set, $setOnInsert: { propertyId: id } },
-    { upsert: true, new: true, runValidators: true },
+    { upsert: true, returnDocument: "after", runValidators: true },
   ).lean();
   return NextResponse.json({ data: serialize(doc as Parameters<typeof serialize>[0]) });
 }

@@ -36,7 +36,7 @@ export async function hitDurableLimit(
     const bucket = (await RateLimitBucket.findOneAndUpdate(
       { _id: `${key}:${windowIndex}` },
       { $inc: { count: 1 }, $setOnInsert: { expireAt: new Date(windowEnd + 60_000) } },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: "after" },
     ).lean()) as { count: number } | null;
     const count = bucket?.count ?? 1;
     return {

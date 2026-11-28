@@ -71,7 +71,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     },
     updateData,
     {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     },
   ).lean();

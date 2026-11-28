@@ -26,7 +26,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const updated = await ContactMessage.findByIdAndUpdate(
     id,
     { status: "read", readAt: new Date(), readBy: user.userId },
-    { new: true },
+    { returnDocument: "after" },
   ).lean();
   if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ data: updated });

@@ -204,7 +204,7 @@ export async function decideRequest(input: {
     (await ChatRequest.findByIdAndUpdate(
       input.requestId,
       { $set: update },
-      { new: true },
+      { returnDocument: "after" },
     ).lean()) ?? ({ ...request, ...update } as StoredDoc);
 
   if (input.decision !== "cancelled") {

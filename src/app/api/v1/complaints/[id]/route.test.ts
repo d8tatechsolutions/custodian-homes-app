@@ -230,7 +230,7 @@ describe("PATCH /api/v1/complaints/[id]", () => {
         updatedById: OWNER_ID,
         updatedByRole: "admin",
       }),
-      expect.objectContaining({ new: true }),
+      expect.objectContaining({ returnDocument: "after" }),
     );
   });
 

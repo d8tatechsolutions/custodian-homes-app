@@ -222,7 +222,7 @@ export async function transitionListingState(input: TransitionListingStateInput)
       $set: updates,
       $inc: { version: 1 },
     },
-    { new: true },
+    { returnDocument: "after" },
   ).lean()) as Lean<ListingDocument> | null;
 
   if (!updated) {

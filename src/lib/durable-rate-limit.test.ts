@@ -28,7 +28,7 @@ describe("durable rate limit", () => {
     expect(bucket.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: "auth:signin:1.2.3.4:10" },
       { $inc: { count: 1 }, $setOnInsert: { expireAt: new Date(11 * 60_000 + 60_000) } },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: "after" },
     );
   });
 

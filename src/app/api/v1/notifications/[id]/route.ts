@@ -31,7 +31,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const updated = await Notification.findOneAndUpdate(
     { _id: id, recipientUserId: auth.userId },
     { $set: { readAt: new Date() } },
-    { new: true },
+    { returnDocument: "after" },
   ).lean();
   if (!updated) {
     return NextResponse.json({ error: "Notification not found" }, { status: 404 });

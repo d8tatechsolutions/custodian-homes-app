@@ -57,7 +57,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           active: override.active ?? null,
         },
       },
-      { upsert: true, new: true, runValidators: true },
+      { upsert: true, returnDocument: "after", runValidators: true },
     );
   }
 

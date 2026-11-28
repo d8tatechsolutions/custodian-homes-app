@@ -149,7 +149,7 @@ describe("/api/v1/admin/property-claims/[claimId]", () => {
           propertyId: PROPERTY_ID,
         }),
         expect.any(Object),
-        { upsert: true, new: true },
+        { upsert: true, returnDocument: "after" },
       );
     });
 

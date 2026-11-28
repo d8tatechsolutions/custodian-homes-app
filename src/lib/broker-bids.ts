@@ -300,7 +300,7 @@ export async function decideBid(
           decisionNote: decision.note ?? "",
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     ).lean();
     if (!claimed) throw new BidError("This request changed meanwhile", 409);
     try {
@@ -356,7 +356,7 @@ export async function respondToBid(
       const claimed = await BrokerBid.findOneAndUpdate(
         { _id: bid._id, status: "countered" },
         { $set: { status: "accepted", decidedAt: now } },
-        { new: true },
+        { returnDocument: "after" },
       ).lean();
       if (!claimed) throw new BidError("This request changed meanwhile", 409);
       try {

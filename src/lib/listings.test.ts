@@ -226,7 +226,7 @@ describe("listings domain service", () => {
           $set: expect.objectContaining({ state: "active" }),
           $inc: { version: 1 },
         }),
-        { new: true },
+        { returnDocument: "after" },
       );
       expect(writeAuditEventStub).toHaveBeenCalledWith(
         expect.objectContaining({

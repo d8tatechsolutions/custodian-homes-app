@@ -237,7 +237,7 @@ describe("PUT /api/v1/caretakers/[id]/privileges", () => {
     expect(user.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: TARGET_ID },
       { privileges: ["manage_tenants"] },
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
   });
 

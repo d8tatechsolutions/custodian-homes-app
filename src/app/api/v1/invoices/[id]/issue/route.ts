@@ -89,7 +89,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
             dueDate: invoice.dueDate ?? computeDueDate(invoice.period),
           },
         },
-        { new: true, runValidators: true },
+        { returnDocument: "after", runValidators: true },
       ).lean();
       if (!updated) {
         return NextResponse.json({ error: "This draft was already issued" }, { status: 409 });

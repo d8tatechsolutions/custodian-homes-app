@@ -207,7 +207,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   delete updateData.custodianIds;
 
   const updated = await Property.findOneAndUpdate({ _id: id }, updateData, {
-    new: true,
+    returnDocument: "after",
     runValidators: true,
   }).lean();
   if (!updated) {

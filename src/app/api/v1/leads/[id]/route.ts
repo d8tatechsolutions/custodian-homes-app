@@ -189,7 +189,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     convertedTenantId = String(convertedTenant._id);
   }
 
-  const updated = await Lead.findOneAndUpdate(filter, update, { new: true }).lean();
+  const updated = await Lead.findOneAndUpdate(filter, update, { returnDocument: "after" }).lean();
   if (!updated) {
     return NextResponse.json({ error: "Lead not found" }, { status: 404 });
   }

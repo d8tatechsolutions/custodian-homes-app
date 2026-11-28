@@ -85,7 +85,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 
   const updated = await Lease.findOneAndUpdate({ _id: id }, updateData, {
-    new: true,
+    returnDocument: "after",
     runValidators: true,
   })
     .select(LEASE_SAFE_FIELDS)
