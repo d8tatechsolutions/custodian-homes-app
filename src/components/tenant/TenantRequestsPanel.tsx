@@ -82,14 +82,18 @@ export function TenantRequestsPanel() {
   const primaryPropertyId = propertyIds[0] ?? "";
 
   const [units, setUnits] = useState<Unit[]>([]);
+  // The id list is rebuilt every render; key the fetch on its contents so it
+  // only reruns when the tenant's properties actually change.
+  const propertyKey = propertyIds.join(",");
   useEffect(() => {
-    if (propertyIds.length === 0) {
+    const ids = propertyKey ? propertyKey.split(",") : [];
+    if (ids.length === 0) {
       setUnits([]);
       return;
     }
     let cancelled = false;
     Promise.all(
-      propertyIds.map((pid) =>
+      ids.map((pid) =>
         fetch(`/api/v1/units?propertyId=${encodeURIComponent(pid)}`)
           .then((r) => r.json())
           .then((j) => (Array.isArray(j?.data) ? (j.data as Unit[]) : []))
@@ -101,7 +105,7 @@ export function TenantRequestsPanel() {
     return () => {
       cancelled = true;
     };
-  }, [propertyIds.join(",")]);
+  }, [propertyKey]);
 
   const propertyId = primaryPropertyId;
 
