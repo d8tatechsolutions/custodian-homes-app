@@ -20,7 +20,10 @@ vi.mock("@/models/Property", () => ({ Property: getModelStubs().property }));
 
 import { ourFileRouter } from "@/app/api/uploadthing/core";
 
-type Middleware = (args: { req: Request }) => Promise<unknown>;
+type Middleware = (args: {
+  req: Request;
+  files?: { name: string; size: number; type: string }[];
+}) => Promise<unknown>;
 const runMiddleware = (ourFileRouter.propertyImages as unknown as { middleware: Middleware })
   .middleware;
 
@@ -59,12 +62,24 @@ describe("uploadthing propertyImages middleware", () => {
   it("rejects requests without a token", async () => {
     await expect(
       runMiddleware({ req: new Request("http://localhost:3000/api/uploadthing") }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: "Unauthorized" });
   });
 
   it("rejects a deactivated user even with a valid token", async () => {
     getModelStubs().user.findById.mockReturnValue(buildQuery({ isActive: false, role: "admin" }));
-    await expect(runMiddleware({ req: reqWithToken() })).rejects.toThrow();
+    await expect(runMiddleware({ req: reqWithToken() })).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: "Unauthorized",
+    });
+  });
+
+  it("rejects a disallowed file as a bad request (400), not a server error", async () => {
+    await expect(
+      runMiddleware({
+        req: reqWithToken(),
+        files: [{ name: "logo.svg", size: 100, type: "image/svg+xml" }],
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("allows an active user and returns the uploader identity", async () => {
