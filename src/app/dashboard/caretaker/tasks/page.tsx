@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { SearchInput } from "@/components/SearchInput";
 import { StatCard } from "@/components/StatCard";
+import { LegacyTaskBoard, type TaskView, TaskViewToggle } from "@/components/tasks/LegacyTaskBoard";
 import { TasksPageSwitch } from "@/components/tasks/TasksPageSwitch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,7 @@ const CaretakerTasksPage = () => {
   const { createTask, updateTask, pending } = useTaskMutations();
 
   const [filter, setFilter] = useState<Filter>("open");
+  const [view, setView] = useState<TaskView>("list");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -82,11 +84,10 @@ const CaretakerTasksPage = () => {
   const openCount = items.filter((t) => t.status === "open").length;
   const inProgressCount = items.filter((t) => t.status === "in-progress").length;
   const doneCount = items.filter((t) => t.status === "done").length;
-  const visible = items
-    .filter((t) => t.status === filter)
-    .filter((t) =>
-      matchesQuery(query, t.title, t.property, resolveAssignee(t), t.notes, t.priority),
-    );
+  const matching = items.filter((t) =>
+    matchesQuery(query, t.title, t.property, resolveAssignee(t), t.notes, t.priority),
+  );
+  const visible = matching.filter((t) => t.status === filter);
 
   const submit = async () => {
     if (!title.trim()) {
@@ -147,16 +148,21 @@ const CaretakerTasksPage = () => {
       </div>
 
       <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
-        <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
-          <TabsList>
-            {(["open", "in-progress", "done"] as const).map((f) => (
-              <TabsTrigger key={f} value={f}>
-                {f === "open" ? "Open" : f === "done" ? "Completed" : "In progress"}
-                <span className="ml-1.5 text-xs text-muted-foreground">{counts[f]}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <TaskViewToggle view={view} onChange={setView} />
+          {view === "list" && (
+            <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
+              <TabsList>
+                {(["open", "in-progress", "done"] as const).map((f) => (
+                  <TabsTrigger key={f} value={f}>
+                    {f === "open" ? "Open" : f === "done" ? "Completed" : "In progress"}
+                    <span className="ml-1.5 text-xs text-muted-foreground">{counts[f]}</span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <SearchInput
             value={query}
@@ -182,89 +188,106 @@ const CaretakerTasksPage = () => {
         </div>
       )}
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {!loading && visible.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card/50 p-10 text-center md:col-span-3">
-            <ClipboardList className="mx-auto h-8 w-8 text-muted-foreground" />
-            <h3 className="mt-3 font-display text-xl">
-              {filter === "done" ? "No completed tasks yet" : "Nothing in this view"}
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {items.some((t) => t.status === filter)
-                ? "No tasks match your search."
-                : filter === "done"
-                  ? "Tasks you finish will land here."
-                  : "Create a task to keep maintenance on track."}
-            </p>
-          </div>
-        ) : (
-          visible.map((task) => (
-            <div
-              key={task._id}
-              className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-soft"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <Badge
-                  className={`${priorityClass[task.priority as TaskPriority]} capitalize hover:opacity-100`}
-                >
-                  {task.priority} priority
-                </Badge>
-                <Badge
-                  className={`${statusClass[task.status as TaskStatus]} capitalize hover:opacity-100`}
-                >
-                  {task.status}
-                </Badge>
-              </div>
-              <h3 className="mt-3 font-display text-lg font-semibold leading-snug">{task.title}</h3>
-              <p className="mt-1 text-xs text-muted-foreground">{task.property || "—"}</p>
-              {task.notes && <p className="mt-3 text-sm text-muted-foreground">{task.notes}</p>}
-              <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
-                <span>
-                  Due {formatDate(task.dueDate)}
-                  {task.completedAt ? ` · done ${formatDate(task.completedAt)}` : ""}
-                </span>
-                <span className="font-medium text-foreground">{resolveAssignee(task) || "—"}</span>
-              </div>
-              <div className="mt-4 flex gap-2">
-                {task.status !== "done" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 rounded-full"
-                    disabled={pending}
-                    onClick={() =>
-                      setStatus(task._id, task.status === "open" ? "in-progress" : "open")
-                    }
-                  >
-                    {task.status === "open" ? "Start work" : "Reopen"}
-                  </Button>
-                )}
-                {task.status !== "done" ? (
-                  <Button
-                    size="sm"
-                    className="flex-1 rounded-full"
-                    disabled={pending}
-                    onClick={() => setStatus(task._id, "done")}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Mark done
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1 rounded-full"
-                    disabled={pending}
-                    onClick={() => setStatus(task._id, "open")}
-                  >
-                    Reopen
-                  </Button>
-                )}
-              </div>
+      {view === "board" ? (
+        <div className="mt-6">
+          {!loading && (
+            <LegacyTaskBoard
+              tasks={matching}
+              resolveAssignee={resolveAssignee}
+              disabled={pending}
+              onMove={(t, to) => setStatus(t._id, to)}
+            />
+          )}
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {!loading && visible.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border bg-card/50 p-10 text-center md:col-span-3">
+              <ClipboardList className="mx-auto h-8 w-8 text-muted-foreground" />
+              <h3 className="mt-3 font-display text-xl">
+                {filter === "done" ? "No completed tasks yet" : "Nothing in this view"}
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {items.some((t) => t.status === filter)
+                  ? "No tasks match your search."
+                  : filter === "done"
+                    ? "Tasks you finish will land here."
+                    : "Create a task to keep maintenance on track."}
+              </p>
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            visible.map((task) => (
+              <div
+                key={task._id}
+                className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-soft"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <Badge
+                    className={`${priorityClass[task.priority as TaskPriority]} capitalize hover:opacity-100`}
+                  >
+                    {task.priority} priority
+                  </Badge>
+                  <Badge
+                    className={`${statusClass[task.status as TaskStatus]} capitalize hover:opacity-100`}
+                  >
+                    {task.status}
+                  </Badge>
+                </div>
+                <h3 className="mt-3 font-display text-lg font-semibold leading-snug">
+                  {task.title}
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">{task.property || "—"}</p>
+                {task.notes && <p className="mt-3 text-sm text-muted-foreground">{task.notes}</p>}
+                <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
+                  <span>
+                    Due {formatDate(task.dueDate)}
+                    {task.completedAt ? ` · done ${formatDate(task.completedAt)}` : ""}
+                  </span>
+                  <span className="font-medium text-foreground">
+                    {resolveAssignee(task) || "—"}
+                  </span>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  {task.status !== "done" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 rounded-full"
+                      disabled={pending}
+                      onClick={() =>
+                        setStatus(task._id, task.status === "open" ? "in-progress" : "open")
+                      }
+                    >
+                      {task.status === "open" ? "Start work" : "Reopen"}
+                    </Button>
+                  )}
+                  {task.status !== "done" ? (
+                    <Button
+                      size="sm"
+                      className="flex-1 rounded-full"
+                      disabled={pending}
+                      onClick={() => setStatus(task._id, "done")}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Mark done
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 rounded-full"
+                      disabled={pending}
+                      onClick={() => setStatus(task._id, "open")}
+                    >
+                      Reopen
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

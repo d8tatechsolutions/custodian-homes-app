@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { TitleCell } from "@/components/common/TitleCell";
 import { SearchInput } from "@/components/SearchInput";
 import { StatCard } from "@/components/StatCard";
+import { DndTaskBoard, NoDrag } from "@/components/tasks/DndTaskBoard";
 import { StatusChangeDialog } from "@/components/tasks/StatusChangeDialog";
 import { OverdueBadge, TaskPriorityBadge, TaskStatusBadge } from "@/components/tasks/TaskBadges";
 import { type TaskFormPrefill, TaskFormSheet } from "@/components/tasks/TaskFormSheet";
@@ -82,9 +83,6 @@ export function TaskListView({
   const [view, setView] = useState<View>("list");
   const [formOpen, setFormOpen] = useState(false);
   const [moving, setMoving] = useState<{ task: MaintenanceTask; to: TaskStatusV2 } | null>(null);
-  // Board drag & drop (desktop); the "Move to…" menu stays for touch and keyboard.
-  const [dragging, setDragging] = useState<MaintenanceTask | null>(null);
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   const { tasks, loading, error, refetch, setTasks } = useMaintenanceTasks();
   const { properties } = useProperties();
@@ -353,90 +351,51 @@ export function TaskListView({
       ) : loading ? null : visible.length === 0 ? (
         <EmptyState title="No tasks match these filters" />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-4">
-          {BOARD_COLUMNS.map((column) => {
-            const cards = visible.filter((t) => column.statuses.includes(t.status));
-            const target = dragging ? dropStatus(dragging, column.statuses) : null;
-            return (
-              <section
-                key={column.key}
-                aria-label={column.title}
-                className={`rounded-2xl bg-muted/40 p-3 transition-shadow ${
-                  dragging && target
-                    ? dropTarget === column.key
-                      ? "ring-2 ring-primary"
-                      : "ring-1 ring-primary/30"
-                    : ""
-                }`}
-                onDragOver={(e) => {
-                  if (!target) return;
-                  e.preventDefault();
-                  setDropTarget(column.key);
-                }}
-                onDragLeave={() => setDropTarget((k) => (k === column.key ? null : k))}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (dragging && target) setMoving({ task: dragging, to: target });
-                  setDragging(null);
-                  setDropTarget(null);
-                }}
-              >
-                <h3 className="mb-3 flex items-center justify-between px-1 text-sm font-semibold">
-                  {column.title}
-                  <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">
-                    {cards.length}
-                  </span>
-                </h3>
-                <ul className="space-y-2">
-                  {cards.map((t) => (
-                    <li
-                      key={t._id}
-                      draggable={movesFor(t).length > 0}
-                      onDragStart={(e) => {
-                        e.dataTransfer.effectAllowed = "move";
-                        e.dataTransfer.setData("text/plain", t._id);
-                        setDragging(t);
-                      }}
-                      onDragEnd={() => {
-                        setDragging(null);
-                        setDropTarget(null);
-                      }}
-                      className={`rounded-xl border border-border bg-card p-3 shadow-soft ${
-                        movesFor(t).length > 0 ? "cursor-grab active:cursor-grabbing" : ""
-                      } ${dragging?._id === t._id ? "opacity-50" : ""}`}
-                    >
-                      <Link
-                        href={`${basePath}/${t._id}`}
-                        className="line-clamp-2 font-medium hover:text-primary hover:underline"
-                      >
-                        {t.title}
-                      </Link>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {t.property}
-                        {t.location?.label ? ` · ${t.location.label}` : ""}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <TaskPriorityBadge priority={t.priority} />
-                        {column.key === "waiting" ? <TaskStatusBadge status={t.status} /> : null}
-                        {t.overdue ? <OverdueBadge /> : null}
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                        <span className="truncate">{t.assignedToName || "Unassigned"}</span>
-                        <span>{t.dueDate ? formatDate(t.dueDate) : ""}</span>
-                      </div>
-                      <div className="mt-2">{moveMenu(t)}</div>
-                    </li>
-                  ))}
-                  {cards.length === 0 ? (
-                    <li className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
-                      Nothing here
-                    </li>
-                  ) : null}
-                </ul>
-              </section>
-            );
-          })}
-        </div>
+        <DndTaskBoard
+          columns={BOARD_COLUMNS.map((c) => ({ id: c.key, title: c.title }))}
+          items={visible.filter((t) => BOARD_COLUMNS.some((c) => c.statuses.includes(t.status)))}
+          getId={(t) => t._id}
+          getTitle={(t) => t.title}
+          columnOf={(t) => BOARD_COLUMNS.find((c) => c.statuses.includes(t.status))?.key ?? ""}
+          canDrop={(t, key) => {
+            const column = BOARD_COLUMNS.find((c) => c.key === key);
+            return Boolean(column && dropStatus(t, column.statuses));
+          }}
+          onDrop={(t, key) => {
+            const column = BOARD_COLUMNS.find((c) => c.key === key);
+            const to = column ? dropStatus(t, column.statuses) : null;
+            if (to) setMoving({ task: t, to });
+          }}
+          gridClassName="lg:grid-cols-4"
+          renderCard={(t) => (
+            <>
+              <NoDrag>
+                <Link
+                  href={`${basePath}/${t._id}`}
+                  className="line-clamp-2 font-medium hover:text-primary hover:underline"
+                >
+                  {t.title}
+                </Link>
+              </NoDrag>
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {t.property}
+                {t.location?.label ? ` · ${t.location.label}` : ""}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <TaskPriorityBadge priority={t.priority} />
+                {t.status.startsWith("waiting") ? <TaskStatusBadge status={t.status} /> : null}
+                {t.overdue ? <OverdueBadge /> : null}
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="truncate">{t.assignedToName || "Unassigned"}</span>
+                <span>{t.dueDate ? formatDate(t.dueDate) : ""}</span>
+              </div>
+              <NoDrag blockPointer className="mt-2">
+                {moveMenu(t)}
+              </NoDrag>
+            </>
+          )}
+        />
       )}
 
       <TaskFormSheet
