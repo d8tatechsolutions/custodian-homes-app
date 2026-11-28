@@ -84,12 +84,17 @@ describe("generateUserCode", () => {
     }
   });
 
-  it("produces 10,000 distinct codes in memory", () => {
+  it("rarely repeats a code over 10,000 draws", () => {
+    // 34^6 ≈ 1.5 billion codes, so 10,000 random draws contain one repeat about
+    // 3% of the time (birthday paradox); requiring zero made this test fail at
+    // random. Real repeats are caught by the unique index and retried. More
+    // than 3 repeats has odds of about 1 in 20 million, so this still fails if
+    // the generator stops being random.
     const codes = new Set<string>();
     for (let index = 0; index < DRAWS; index += 1) {
       codes.add(generateUserCode());
     }
-    expect(codes.size).toBe(DRAWS);
+    expect(DRAWS - codes.size).toBeLessThanOrEqual(3);
   });
 
   it("uses every alphabet symbol over 10,000 draws", () => {
