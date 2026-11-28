@@ -213,16 +213,20 @@ export const DashboardShell = ({
           <div className="mb-4 px-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
             {roleName}
           </div>
-          {navList(undefined, "desktop")}
-          <div className="mt-auto rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
+          {/* The links scroll inside the sidebar, so an open group never pushes
+              the help box past the sidebar's bottom edge. */}
+          <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-2">
+            {navList(undefined, "desktop")}
+          </div>
+          <div className="mt-2 shrink-0 rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
             <p className="mb-2 font-medium text-foreground">Need help?</p>
             <p>
               Email{" "}
               <a
-                href={`mailto:${BRAND.emails.support}`}
+                href={`mailto:${BRAND.emails.info}`}
                 className="font-medium text-foreground underline-offset-4 hover:underline"
               >
-                {BRAND.emails.support}
+                {BRAND.emails.info}
               </a>{" "}
               — typically reply in under an hour.
             </p>
