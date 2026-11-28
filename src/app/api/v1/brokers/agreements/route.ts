@@ -6,6 +6,7 @@ import { authenticateSession } from "@/lib/auth-scope";
 import { createCommissionAgreement } from "@/lib/brokers";
 import { BROKER_SCOPE_TYPES, COMMISSION_BASES } from "@/lib/domain-enums";
 import { connectToDatabase } from "@/lib/mongoose";
+import { publicErrorMessage } from "@/lib/public-error";
 import { CommissionAgreement } from "@/models/CommissionAgreement";
 import { User } from "@/models/User";
 
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
   const propertyIdParam = request.nextUrl.searchParams.get("propertyId");
   const statusParam = request.nextUrl.searchParams.get("status");
 
-  const query: Record<string, any> = {};
+  const query: Record<string, unknown> = {};
   if (user.role === "broker") {
     query.brokerId = auth.userId;
   } else if (brokerIdParam) {
@@ -80,9 +81,9 @@ export async function POST(request: NextRequest) {
     );
 
     return NextResponse.json({ agreement: created }, { status: 201 });
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: err?.message || "Failed to create commission agreement" },
+      { error: publicErrorMessage(err, "Failed to create commission agreement") },
       { status: 400 },
     );
   }

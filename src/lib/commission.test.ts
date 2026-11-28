@@ -169,7 +169,7 @@ describe("settlement accrual", () => {
       amountPaid: 50_000,
     });
 
-    expect(result._id).toBe("acc-1");
+    expect(result?._id).toBe("acc-1");
     expect(accrualStub.create).toHaveBeenCalledWith(
       expect.objectContaining({
         attributionId: "attr-1",
@@ -237,7 +237,7 @@ describe("settlement accrual", () => {
       rentAmount: 50_000,
     });
 
-    expect(result._id).toBe("acc-existing");
+    expect(result?._id).toBe("acc-existing");
   });
 
   it("does nothing when the lease has no confirmed attribution", async () => {
@@ -382,7 +382,7 @@ describe("commission lifecycle", () => {
       "Tenant refunded",
     );
 
-    expect(result.status).toBe("reversed");
+    expect(result?.status).toBe("reversed");
     expect(accrualStub.updateOne).toHaveBeenCalledWith(
       { _id: "acc-1" },
       expect.objectContaining({
@@ -477,7 +477,7 @@ describe("commission lifecycle", () => {
       "Paid tenancy cancelled",
     );
 
-    expect(result.status).toBe("eligible");
+    expect(result?.status).toBe("eligible");
     expect(accrualStub.create).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "clawback",

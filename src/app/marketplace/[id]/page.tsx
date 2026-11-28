@@ -154,10 +154,11 @@ export default function ListingDetailPage() {
         description: "The property manager has received your tenancy application.",
       });
       setApplyOpen(false);
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: "Submission failed",
-        description: err.message || "Could not submit application.",
+        description:
+          err instanceof Error && err.message ? err.message : "Could not submit application.",
         variant: "destructive",
       });
     } finally {

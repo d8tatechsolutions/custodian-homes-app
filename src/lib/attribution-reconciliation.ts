@@ -1,6 +1,7 @@
+import type { Lean } from "@/lib/lean";
 import { connectToDatabase } from "@/lib/mongoose";
-import { Attribution } from "@/models/Attribution";
-import { Lease } from "@/models/Lease";
+import { Attribution, type AttributionDocument } from "@/models/Attribution";
+import { type ILease, Lease } from "@/models/Lease";
 
 export interface ReconciliationReport {
   totalConfirmed: number;
@@ -20,16 +21,16 @@ export async function reconcileAttributions(): Promise<ReconciliationReport> {
 
   const confirmed = (await Attribution.find({
     status: "confirmed",
-  }).lean()) as any[];
+  }).lean()) as Lean<AttributionDocument>[];
 
-  const leaseIds = confirmed.map((c: any) => c.leaseId).filter(Boolean);
+  const leaseIds = confirmed.map((c) => c.leaseId).filter(Boolean);
   const existingLeases = (await Lease.find({
     _id: { $in: leaseIds },
   })
     .select("_id")
-    .lean()) as any[];
+    .lean()) as Lean<ILease>[];
 
-  const existingLeaseSet = new Set(existingLeases.map((l: any) => String(l._id)));
+  const existingLeaseSet = new Set(existingLeases.map((l) => String(l._id)));
 
   const orphanConfirmedAttributions: Array<{ attributionId: string; leaseId: string }> = [];
   const leaseAttributionMap = new Map<string, string[]>();

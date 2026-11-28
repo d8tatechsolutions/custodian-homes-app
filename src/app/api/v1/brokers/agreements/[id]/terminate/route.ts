@@ -5,6 +5,7 @@ import { z } from "zod";
 import { authenticateSession } from "@/lib/auth-scope";
 import { terminateCommissionAgreement } from "@/lib/brokers";
 import { connectToDatabase } from "@/lib/mongoose";
+import { publicErrorMessage } from "@/lib/public-error";
 import { User } from "@/models/User";
 
 const terminateSchema = z.object({
@@ -41,9 +42,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
 
     return NextResponse.json({ agreement: updated });
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: err?.message || "Failed to terminate agreement" },
+      { error: publicErrorMessage(err, "Failed to terminate agreement") },
       { status: 400 },
     );
   }

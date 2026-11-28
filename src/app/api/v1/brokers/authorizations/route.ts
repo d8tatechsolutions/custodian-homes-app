@@ -4,8 +4,9 @@ import { z } from "zod";
 import { readJsonBody } from "@/app/api/v1/_helpers";
 import { authenticateSession } from "@/lib/auth-scope";
 import { authorizeBroker, listBrokerAuthorizations } from "@/lib/brokers";
-import { BROKER_SCOPE_TYPES } from "@/lib/domain-enums";
+import { BROKER_SCOPE_TYPES, type BrokerAuthStatus } from "@/lib/domain-enums";
 import { connectToDatabase } from "@/lib/mongoose";
+import { publicErrorMessage } from "@/lib/public-error";
 import { User } from "@/models/User";
 
 const authorizeSchema = z.object({
@@ -31,7 +32,8 @@ export async function GET(request: NextRequest) {
 
   const brokerIdParam = request.nextUrl.searchParams.get("brokerId");
   const propertyIdParam = request.nextUrl.searchParams.get("propertyId");
-  const statusParam = request.nextUrl.searchParams.get("status") as any;
+  // A plain string from the URL (never an operator object); unknown values match nothing.
+  const statusParam = request.nextUrl.searchParams.get("status") as BrokerAuthStatus | null;
 
   // If user is a broker, restrict to their own authorizations
   const filterBrokerId = user.role === "broker" ? auth.userId : (brokerIdParam ?? undefined);
@@ -80,9 +82,9 @@ export async function POST(request: NextRequest) {
     );
 
     return NextResponse.json({ authorization: created }, { status: 201 });
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: err?.message || "Failed to grant broker authorization" },
+      { error: publicErrorMessage(err, "Failed to grant broker authorization") },
       { status: 400 },
     );
   }

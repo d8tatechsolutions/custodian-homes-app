@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   }
 
   const profile = await BrokerProfile.findOne({ userId: auth.userId }).select("status").lean();
-  if (!profile || profile.status !== "verified") {
+  if (profile?.status !== "verified") {
     return NextResponse.json(
       { error: "Forbidden: Verified broker profile required" },
       { status: 403 },

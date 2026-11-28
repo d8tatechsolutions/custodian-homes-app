@@ -1,16 +1,23 @@
 import { randomBytes } from "node:crypto";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AttributionSource } from "@/lib/domain-enums";
+import type { Lean } from "@/lib/lean";
 import { connectToDatabase } from "@/lib/mongoose";
 import type { Role } from "@/lib/permissions";
-import { Application } from "@/models/Application";
-import { Attribution } from "@/models/Attribution";
-import { BrokerAuthorization } from "@/models/BrokerAuthorization";
-import { BrokerProfile } from "@/models/BrokerProfile";
-import { CommissionAgreement } from "@/models/CommissionAgreement";
-import { Lease } from "@/models/Lease";
-import { Listing } from "@/models/Listing";
-import { ListingPublisher } from "@/models/ListingPublisher";
+import { Application, type ApplicationDocument } from "@/models/Application";
+import { Attribution, type AttributionDocument } from "@/models/Attribution";
+import {
+  BrokerAuthorization,
+  type BrokerAuthorizationDocument,
+} from "@/models/BrokerAuthorization";
+import { BrokerProfile, type BrokerProfileDocument } from "@/models/BrokerProfile";
+import {
+  CommissionAgreement,
+  type CommissionAgreementDocument,
+} from "@/models/CommissionAgreement";
+import { type ILease, Lease } from "@/models/Lease";
+import { Listing, type ListingDocument } from "@/models/Listing";
+import { ListingPublisher, type ListingPublisherDocument } from "@/models/ListingPublisher";
 import { toRedactedProspectView } from "./brokers";
 
 /** A share-code touch only attributes a tenancy for 30 days. */
@@ -18,21 +25,31 @@ export const ATTRIBUTION_TOUCH_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 /** Provisional touch records are discarded after 90 days. */
 export const ATTRIBUTION_PROVISIONAL_LIFESPAN_MS = 90 * 24 * 60 * 60 * 1000;
 
-export interface ValidateTouchResult {
-  valid: boolean;
+interface TouchResultBase {
   reason?: string;
-  publisher?: any;
-  listing?: any;
   brokerUserId?: string;
   commissionAgreementId?: string;
   source: AttributionSource;
 }
 
-export interface ProvisionalTouchResult extends ValidateTouchResult {
+/** A valid touch always carries its publisher and listing. */
+export type ValidateTouchResult =
+  | (TouchResultBase & {
+      valid: true;
+      publisher: Lean<ListingPublisherDocument>;
+      listing: Lean<ListingDocument>;
+    })
+  | (TouchResultBase & {
+      valid: false;
+      publisher?: Lean<ListingPublisherDocument>;
+      listing?: Lean<ListingDocument>;
+    });
+
+export type ProvisionalTouchResult = ValidateTouchResult & {
   touchToken?: string;
   touchedAt?: Date;
   expiresAt?: Date;
-}
+};
 
 export async function validateShareCode(
   shareCode: string,
@@ -40,21 +57,23 @@ export async function validateShareCode(
 ): Promise<ValidateTouchResult> {
   await connectToDatabase();
 
-  if (!shareCode || !shareCode.trim()) {
+  if (!shareCode?.trim()) {
     return { valid: false, reason: "Missing shareCode", source: "direct" };
   }
 
   const publisher = (await ListingPublisher.findOne({
     shareCode: shareCode.trim(),
     state: "active",
-  }).lean()) as any;
+  }).lean()) as Lean<ListingPublisherDocument> | null;
 
   if (!publisher) {
     return { valid: false, reason: "Share code is invalid or inactive", source: "direct" };
   }
 
-  const listing = (await Listing.findById(publisher.listingId).lean()) as any;
-  if (!listing || listing.state !== "active" || listing.deletedAt) {
+  const listing = (await Listing.findById(
+    publisher.listingId,
+  ).lean()) as Lean<ListingDocument> | null;
+  if (listing?.state !== "active" || listing.deletedAt) {
     return { valid: false, reason: "Listing is no longer active", source: "direct" };
   }
 
@@ -65,9 +84,9 @@ export async function validateShareCode(
   if (publisher.publisherRole === "broker") {
     const brokerProfile = (await BrokerProfile.findOne({
       userId: publisher.publisherUserId,
-    }).lean()) as any;
+    }).lean()) as Lean<BrokerProfileDocument> | null;
 
-    if (!brokerProfile || brokerProfile.status !== "verified") {
+    if (brokerProfile?.status !== "verified") {
       return { valid: false, reason: "Broker profile is not verified", source: "direct" };
     }
 
@@ -80,7 +99,7 @@ export async function validateShareCode(
         ...(listing.blockId ? [{ scopeType: "block", scopeId: listing.blockId }] : []),
         { scopeType: "property", scopeId: listing.propertyId },
       ],
-    }).lean()) as any;
+    }).lean()) as Lean<BrokerAuthorizationDocument> | null;
 
     if (!authorization) {
       return {
@@ -99,7 +118,7 @@ export async function validateShareCode(
         ...(listing.blockId ? [{ scopeType: "block", scopeId: listing.blockId }] : []),
         { scopeType: "property", scopeId: listing.propertyId },
       ],
-    }).lean()) as any;
+    }).lean()) as Lean<CommissionAgreementDocument> | null;
 
     return {
       valid: true,
@@ -166,7 +185,10 @@ export interface BindApplicationAttributionInput {
   actorUserId?: string;
 }
 
-async function writeAttributionLocked(attribution: any, input: BindApplicationAttributionInput) {
+async function writeAttributionLocked(
+  attribution: Lean<AttributionDocument>,
+  input: BindApplicationAttributionInput,
+) {
   await writeAuditEvent({
     actor: {
       userId: input.actorUserId || "system",
@@ -195,7 +217,7 @@ export async function bindApplicationAttribution(input: BindApplicationAttributi
   const existing = (await Attribution.findOne({
     applicationId: input.applicationId,
     status: { $in: ["provisional", "locked", "confirmed"] },
-  }).lean()) as any;
+  }).lean()) as Lean<AttributionDocument> | null;
 
   if (existing) {
     return existing;
@@ -207,7 +229,7 @@ export async function bindApplicationAttribution(input: BindApplicationAttributi
     const touch = (await Attribution.findOne({
       touchToken: input.touchToken,
       status: "provisional",
-    }).lean()) as any;
+    }).lean()) as Lean<AttributionDocument> | null;
 
     if (touch) {
       const now = Date.now();
@@ -219,7 +241,7 @@ export async function bindApplicationAttribution(input: BindApplicationAttributi
       const withinLifespan = now <= expiresAt;
       const matchesUnit = String(touch.unitId) === input.unitId;
 
-      const validation =
+      const validation: ValidateTouchResult =
         withinTouchWindow && withinLifespan && matchesUnit && touch.shareCode
           ? await validateShareCode(touch.shareCode, input.unitId)
           : { valid: false, source: "direct" as AttributionSource };
@@ -245,7 +267,7 @@ export async function bindApplicationAttribution(input: BindApplicationAttributi
           },
         );
 
-        const locked = (await Attribution.findById(touch._id).lean()) as any;
+        const locked = (await Attribution.findById(touch._id).lean()) as Lean<AttributionDocument>;
         await writeAttributionLocked(locked, input);
         return locked;
       }
@@ -304,7 +326,7 @@ export async function bindApplicationAttribution(input: BindApplicationAttributi
     lockedAt: new Date(),
   });
 
-  const createdDoc = (await Attribution.findById(created._id).lean()) as any;
+  const createdDoc = (await Attribution.findById(created._id).lean()) as Lean<AttributionDocument>;
   await writeAttributionLocked(createdDoc, input);
 
   return createdDoc;
@@ -319,14 +341,16 @@ export async function confirmAttributionForLease(
   await connectToDatabase();
 
   // Look for locked attribution by applicationId or unitId
-  const query: Record<string, any> = { status: "locked" };
+  const query: Record<string, unknown> = { status: "locked" };
   if (applicationId) {
     query.applicationId = applicationId;
   } else {
     query.unitId = unitId;
   }
 
-  const attribution = (await Attribution.findOne(query).sort({ lockedAt: -1 }).lean()) as any;
+  const attribution = (await Attribution.findOne(query)
+    .sort({ lockedAt: -1 })
+    .lean()) as Lean<AttributionDocument> | null;
 
   if (attribution) {
     await Attribution.updateOne(
@@ -340,7 +364,9 @@ export async function confirmAttributionForLease(
       },
     );
 
-    const updated = (await Attribution.findById(attribution._id).lean()) as any;
+    const updated = (await Attribution.findById(
+      attribution._id,
+    ).lean()) as Lean<AttributionDocument>;
 
     await writeAuditEvent({
       actor: { userId: actorUserId, role: "system" },
@@ -362,13 +388,13 @@ export async function confirmAttributionForLease(
   const alreadyConfirmed = (await Attribution.findOne({
     leaseId,
     status: "confirmed",
-  }).lean()) as any;
+  }).lean()) as Lean<AttributionDocument> | null;
   if (alreadyConfirmed) {
     return alreadyConfirmed;
   }
 
   // If no locked attribution existed, create a direct confirmed attribution
-  const lease = (await Lease.findById(leaseId).lean()) as any;
+  const lease = (await Lease.findById(leaseId).lean()) as Lean<ILease> | null;
   const propertyId = lease?.propertyId || "";
 
   const created = await Attribution.create({
@@ -383,7 +409,7 @@ export async function confirmAttributionForLease(
     lockedAt: new Date(),
   });
 
-  const createdDoc = (await Attribution.findById(created._id).lean()) as any;
+  const createdDoc = (await Attribution.findById(created._id).lean()) as Lean<AttributionDocument>;
 
   await writeAuditEvent({
     actor: { userId: actorUserId, role: "system" },
@@ -415,7 +441,9 @@ export async function resolveAttributionDispute(
     throw new Error("Only system administrators can resolve attribution disputes");
   }
 
-  const original = (await Attribution.findById(attributionId).lean()) as any;
+  const original = (await Attribution.findById(
+    attributionId,
+  ).lean()) as Lean<AttributionDocument> | null;
   if (!original) {
     throw new Error("Attribution record not found");
   }
@@ -441,7 +469,9 @@ export async function resolveAttributionDispute(
     },
   });
 
-  const supersedingDoc = (await Attribution.findById(superseding._id).lean()) as any;
+  const supersedingDoc = (await Attribution.findById(
+    superseding._id,
+  ).lean()) as Lean<AttributionDocument>;
 
   // Update original record as disputed and mark superseding reference
   await Attribution.updateOne(
@@ -457,7 +487,9 @@ export async function resolveAttributionDispute(
     },
   );
 
-  const updatedOriginal = (await Attribution.findById(attributionId).lean()) as any;
+  const updatedOriginal = (await Attribution.findById(
+    attributionId,
+  ).lean()) as Lean<AttributionDocument>;
 
   await writeAuditEvent({
     actor: { userId: systemAdminActor.userId, role: systemAdminActor.role },
@@ -497,17 +529,21 @@ export async function getBrokerProspects(
 
   const [total, attributions] = await Promise.all([
     Attribution.countDocuments(filter),
-    Attribution.find(filter).sort({ createdAt: -1 }).skip(skip).limit(pagination.limit).lean(),
+    Attribution.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(pagination.limit)
+      .lean() as Promise<Lean<AttributionDocument>[]>,
   ]);
 
-  const appIds = attributions.map((a: any) => a.applicationId);
+  const appIds = attributions.map((a) => a.applicationId);
   const applications = (await Application.find({
     _id: { $in: appIds },
-  }).lean()) as any[];
+  }).lean()) as Lean<ApplicationDocument>[];
 
-  const appMap = new Map(applications.map((app: any) => [String(app._id), app]));
+  const appMap = new Map(applications.map((app) => [String(app._id), app]));
 
-  const prospects = attributions.map((attr: any) => {
+  const prospects = attributions.map((attr) => {
     const app = appMap.get(String(attr.applicationId));
     return toRedactedProspectView({
       _id: attr.applicationId,

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { writeAuditEvent } from "@/lib/audit";
 import type { ListingPublisherRole, ListingState } from "@/lib/domain-enums";
-import { Listing } from "@/models/Listing";
+import type { Lean } from "@/lib/lean";
+import { Listing, type ListingDocument } from "@/models/Listing";
 
 export const VALID_LISTING_TRANSITIONS: Record<ListingState, readonly ListingState[]> = {
   draft: ["active", "withdrawn"],
@@ -197,7 +198,7 @@ export interface TransitionListingStateInput {
 }
 
 export async function transitionListingState(input: TransitionListingStateInput) {
-  const listing = (await Listing.findById(input.listingId).lean()) as any;
+  const listing = (await Listing.findById(input.listingId).lean()) as Lean<ListingDocument> | null;
   if (!listing) {
     throw new Error(`Listing ${input.listingId} not found`);
   }
@@ -222,7 +223,7 @@ export async function transitionListingState(input: TransitionListingStateInput)
       $inc: { version: 1 },
     },
     { new: true },
-  ).lean()) as any;
+  ).lean()) as Lean<ListingDocument> | null;
 
   if (!updated) {
     throw new Error(
@@ -255,7 +256,7 @@ export async function markListingLetForUnit(unitId: string, actorUserId = "syste
     unitId,
     state: { $in: ["draft", "active", "paused"] },
     deletedAt: null,
-  }).lean()) as any[];
+  }).lean()) as Lean<ListingDocument>[];
 
   for (const listing of inFlightListings) {
     await Listing.updateOne({ _id: listing._id }, { $set: { state: "let" }, $inc: { version: 1 } });

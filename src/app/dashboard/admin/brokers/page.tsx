@@ -31,11 +31,33 @@ import { adminNav as nav } from "@/config/dashboardNav";
 import { useAuth } from "@/hooks/use-auth";
 import { useProperties } from "@/hooks/use-properties";
 
+interface BrokerRow {
+  _id: string;
+  userId: string;
+  agencyName?: string;
+  licenseNumber?: string;
+  email?: string;
+  phone?: string;
+  status: string;
+}
+interface AuthorizationRow {
+  _id: string;
+  brokerId: string;
+  propertyId: string;
+  scopeType: string;
+  scopeId: string;
+  status: string;
+  grantedAt: string;
+}
+
+const errorText = (err: unknown, fallback: string) =>
+  err instanceof Error && err.message ? err.message : fallback;
+
 export default function AdminBrokersPage() {
   const { user } = useAuth();
   const { properties } = useProperties();
-  const [brokers, setBrokers] = useState<any[]>([]);
-  const [authorizations, setAuthorizations] = useState<any[]>([]);
+  const [brokers, setBrokers] = useState<BrokerRow[]>([]);
+  const [authorizations, setAuthorizations] = useState<AuthorizationRow[]>([]);
 
   // New Authorization dialog state
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
@@ -93,8 +115,8 @@ export default function AdminBrokersPage() {
 
       toast.success(`Broker marked as ${decision}`);
       fetchBrokersAndAuths();
-    } catch (err: any) {
-      toast.error(err.message || "Action failed");
+    } catch (err) {
+      toast.error(errorText(err, "Action failed"));
     }
   };
 
@@ -155,8 +177,8 @@ export default function AdminBrokersPage() {
       toast.success("Broker authorized and commission terms assigned");
       setAuthDialogOpen(false);
       fetchBrokersAndAuths();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to complete authorization");
+    } catch (err) {
+      toast.error(errorText(err, "Failed to complete authorization"));
     } finally {
       setSubmittingAuth(false);
     }
@@ -181,8 +203,8 @@ export default function AdminBrokersPage() {
 
       toast.success("Authorization revoked");
       fetchBrokersAndAuths();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to revoke");
+    } catch (err) {
+      toast.error(errorText(err, "Failed to revoke"));
     }
   };
 

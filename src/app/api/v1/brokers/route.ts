@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   const skip = (page - 1) * limit;
 
   const statusParam = request.nextUrl.searchParams.get("status");
-  const query: Record<string, any> = {};
+  const query: Record<string, unknown> = {};
   if (statusParam) {
     query.status = statusParam;
   }
