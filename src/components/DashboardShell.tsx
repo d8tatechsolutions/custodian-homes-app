@@ -234,14 +234,16 @@ export const DashboardShell = ({
         </aside>
 
         <main className="flex-1 min-w-0">
-          <div className="mb-8 flex items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-3">
+          {/* Phones: menu and icons share the first row and the title gets the
+              full width below, so long titles never break mid-word. */}
+          <div className="mb-8 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 sm:flex-nowrap">
+            <div className="flex min-w-0 items-start gap-3 max-sm:contents">
               <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
                 <SheetTrigger asChild>
                   <Button
                     variant="outline"
                     size="icon"
-                    className="mt-1 lg:hidden"
+                    className="mt-1 lg:hidden max-sm:order-1 max-sm:mt-0"
                     aria-label="Open menu"
                   >
                     <Menu className="h-5 w-5" />
@@ -263,14 +265,14 @@ export const DashboardShell = ({
                   </div>
                 </SheetContent>
               </Sheet>
-              <div className="min-w-0">
+              <div className="min-w-0 max-sm:order-3 max-sm:basis-full">
                 <h1 className="break-words font-display text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
                   {title}
                 </h1>
                 {subtitle && <p className="mt-1 text-muted-foreground">{subtitle}</p>}
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2 max-sm:order-2">
               <SearchBar className="hidden md:block" />
               <NotificationsBell />
               <ThemeToggle />
