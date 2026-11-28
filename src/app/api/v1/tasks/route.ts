@@ -5,7 +5,7 @@ import { propertyTitleMap, readJsonBody, resolveDashboardActor } from "@/app/api
 import { TASK_STATUSES } from "@/lib/domain-enums";
 import { isTasksV2Enabled } from "@/lib/feature-flags";
 import { recordTaskActivity } from "@/lib/maintenance/activity";
-import { resolveAssignee } from "@/lib/maintenance/assignee";
+import { ownerFallbackAssignee, resolveAssignee } from "@/lib/maintenance/assignee";
 import { nairobiToday } from "@/lib/maintenance/dates";
 import { ACTIVE_TASK_STATUSES, TASK_STATUSES_V2 } from "@/lib/maintenance/enums";
 import { loadTaskLocation } from "@/lib/maintenance/location-loader";
@@ -224,13 +224,19 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // Left unassigned on a property nobody manages: the owner receives it.
+  const ownerFallback = parsed.data.assignedTo
+    ? null
+    : await ownerFallbackAssignee(propertyId, ownerId);
   const task = await Task.create({
     title: parsed.data.title,
     propertyId,
     priority: parsed.data.priority,
     status: parsed.data.status,
-    assignedTo: parsed.data.assignedTo ?? "",
-    assignedToName: parsed.data.assignedToName ?? "",
+    assignedTo: ownerFallback ? ownerFallback.assignedTo : (parsed.data.assignedTo ?? ""),
+    assignedToName: ownerFallback
+      ? ownerFallback.assignedToName
+      : (parsed.data.assignedToName ?? ""),
     createdBy: actor.userId,
     createdByRole: actor.role,
     createdByName: (creator as { name?: string } | null)?.name ?? "",
@@ -270,8 +276,12 @@ async function createTaskV2(
     actor.role === "caretaker"
       ? { kind: "staff" as const, userId: actor.userId }
       : (extra.data.assignee ?? null);
-  const assignee = await resolveAssignee(actor, requestedAssignee, propertyId, ownerId);
-  if ("error" in assignee) return NextResponse.json({ error: assignee.error }, { status: 400 });
+  const resolved = await resolveAssignee(actor, requestedAssignee, propertyId, ownerId);
+  if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: 400 });
+  // Left unassigned on a property nobody manages: the owner receives it.
+  const assignee = resolved.assignee
+    ? resolved
+    : ((await ownerFallbackAssignee(propertyId, ownerId)) ?? resolved);
 
   const complaintIds = [...new Set(extra.data.complaintIds)];
   if (complaintIds.length > 0) {
