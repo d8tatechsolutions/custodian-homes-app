@@ -11,7 +11,7 @@ import {
   sendPasswordResetEmail,
   sendVerificationEmail,
 } from "@/lib/email";
-import { getJwtSecret } from "@/lib/jwt";
+import { getJwtSecret, JWT_ALGORITHM } from "@/lib/jwt";
 import { hashLinkToken, storedLinkTokenMatch } from "@/lib/link-tokens";
 import { connectToDatabase } from "@/lib/mongoose";
 import { isValidE164, isValidNationalId, normalizeNationalId } from "@/lib/phone";
@@ -23,9 +23,12 @@ import { normalizeContactEmail, normalizeContactPhone } from "@/lib/user-identit
 import { Tenant } from "@/models/Tenant";
 import { User } from "@/models/User";
 
+/** A bcrypt hash of a throwaway value (cost 12, like stored passwords). */
+const TIMING_EQUALISER_HASH = "$2b$12$MatdkTJdx.ikFS29K4Y0VutZ/AN7eyUpaneosMgkHt/eLkfEHNF5y";
+
 const signInSchema = z
   .object({
-    identifier: z.string().min(1, "Email or phone required").optional(),
+    identifier: z.string().min(1, "Email or phone required").max(320).optional(),
     email: z.string().email("Enter a valid email").optional(),
     password: z.string().min(6, "Password must be at least 6 characters"),
   })
@@ -133,7 +136,7 @@ function issueSession(
       tokenVersion: user.tokenVersion ?? 0,
     },
     getJwtSecret(),
-    { expiresIn: "7d" },
+    { expiresIn: "7d", algorithm: JWT_ALGORITHM },
   );
 
   response.cookies.set("keja-token", token, {
@@ -187,9 +190,16 @@ export async function POST(request: Request) {
       }
       // biome-ignore lint/complexity: useOptionalChain
       if (!user || !user.isActive) {
+        // Same bcrypt cost as a real check, so response time doesn't reveal
+        // whether the account exists.
+        await bcrypt.compare(parsed.data.password, TIMING_EQUALISER_HASH);
         return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
       }
-      const isValid = await bcrypt.compare(parsed.data.password, user.passwordHash);
+      // An account with no password yet (e.g. a pending invite) fails like a wrong one.
+      const isValid = await bcrypt.compare(
+        parsed.data.password,
+        user.passwordHash || TIMING_EQUALISER_HASH,
+      );
       if (!isValid) {
         return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
       }

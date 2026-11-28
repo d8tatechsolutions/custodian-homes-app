@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { botVerdict, isMachinePath } from "@/lib/bot-guard";
-import { getJwtSecret } from "@/lib/jwt";
+import { getJwtSecret, JWT_VERIFY_OPTIONS } from "@/lib/jwt";
 import { checkSameOrigin, rateLimit } from "@/lib/rate-limit";
 import { getDashboardAllowedRoles, getRoleRoute, type Role } from "@/lib/role-routes";
 
@@ -22,7 +22,7 @@ const API_REQUESTS_PER_MINUTE = 600;
 
 function getRoleFromToken(token: string): Role | null {
   try {
-    const payload = jwt.verify(token, getJwtSecret()) as { role?: Role };
+    const payload = jwt.verify(token, getJwtSecret(), JWT_VERIFY_OPTIONS) as { role?: Role };
     return payload.role ?? null;
   } catch {
     return null;

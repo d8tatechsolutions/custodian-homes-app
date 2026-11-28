@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   const filter: Record<string, unknown> = { status: "approved", expiresAt: { $gt: new Date() } };
   const purpose = params.get("purpose");
   if (purpose === "rent" || purpose === "sale") filter.purpose = purpose;
-  const county = params.get("county")?.trim();
+  const county = params.get("county")?.trim().slice(0, 100);
   if (county) filter.county = new RegExp(`^${county.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
   const maxPrice = Number(params.get("maxPrice"));
   if (Number.isFinite(maxPrice) && maxPrice > 0) filter.price = { $lte: maxPrice };
