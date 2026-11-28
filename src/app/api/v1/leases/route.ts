@@ -1,6 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/app/api/v1/_helpers";
+import { auditActorFrom } from "@/lib/audit-actor";
+import { recordLeaseAudit } from "@/lib/audit-records";
 import { connectToDatabase } from "@/lib/mongoose";
 import { buildPaginationResult, parsePagination } from "@/lib/pagination";
 import { getTenantScope, requirePermission, tenantMatchesScope } from "@/lib/permissions";
@@ -148,5 +150,15 @@ export async function POST(request: NextRequest) {
   });
   const created = await Lease.findById(lease._id).select(LEASE_SAFE_FIELDS).lean();
 
+  if (created) {
+    await recordLeaseAudit(
+      request,
+      await auditActorFrom(request),
+      "lease.created",
+      created,
+      null,
+      created,
+    );
+  }
   return NextResponse.json({ data: created }, { status: 201 });
 }

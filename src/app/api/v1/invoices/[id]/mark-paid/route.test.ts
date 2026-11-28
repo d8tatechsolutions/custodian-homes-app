@@ -11,6 +11,9 @@ vi.mock("@/lib/mongoose", () => ({
 vi.mock("@/lib/audit", () => ({
   writeAuditEvent: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("@/lib/audit-records", () => ({
+  recordInvoiceAudit: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("@/lib/notifications", () => ({
   notifyInvoicePaid: vi.fn().mockResolvedValue(true),
 }));
@@ -22,6 +25,7 @@ vi.mock("@/models/ManagementAssignment", () => ({
 }));
 
 import { POST } from "@/app/api/v1/invoices/[id]/mark-paid/route";
+import { recordInvoiceAudit } from "@/lib/audit-records";
 import { notifyInvoicePaid } from "@/lib/notifications";
 
 const { user, property, invoice: invoiceStub, managementAssignment } = getModelStubs();
@@ -282,6 +286,16 @@ describe("POST /api/v1/invoices/[id]/mark-paid", () => {
     expect(notifyInvoicePaidMock).toHaveBeenCalledTimes(1);
     expect(notifyInvoicePaidMock).toHaveBeenCalledWith(
       expect.objectContaining({ _id: INVOICE_ID, status: "paid" }),
+    );
+    // Every hand-recorded payment lands in the history, with who recorded it.
+    expect(vi.mocked(recordInvoiceAudit)).toHaveBeenCalledWith(
+      expect.anything(),
+      { userId: OWNER_ID, role: "admin" },
+      "invoice.payment_recorded",
+      expect.objectContaining({ _id: INVOICE_ID }),
+      expect.objectContaining({ _id: INVOICE_ID }),
+      expect.objectContaining({ status: "paid" }),
+      expect.objectContaining({ amountThisPayment: expect.any(Number) }),
     );
   });
 

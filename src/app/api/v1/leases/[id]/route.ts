@@ -2,6 +2,8 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/app/api/v1/_helpers";
+import { auditActorFrom } from "@/lib/audit-actor";
+import { recordLeaseAudit } from "@/lib/audit-records";
 import { connectToDatabase } from "@/lib/mongoose";
 import { asSoftDeleteModel } from "@/lib/mongoose-soft-delete";
 import { getTenantScope, requirePermission } from "@/lib/permissions";
@@ -91,6 +93,14 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   if (!updated) {
     return NextResponse.json({ error: "Lease not found" }, { status: 404 });
   }
+  await recordLeaseAudit(
+    request,
+    await auditActorFrom(request),
+    lease.status === "active" && updated.status === "ended" ? "lease.ended" : "lease.updated",
+    lease,
+    lease,
+    updated,
+  );
 
   return NextResponse.json({ data: updated });
 }
@@ -125,6 +135,14 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   }
 
   await asSoftDeleteModel(Lease).softDeleteById(id);
+  await recordLeaseAudit(
+    request,
+    await auditActorFrom(request),
+    "lease.deleted",
+    lease,
+    lease,
+    null,
+  );
 
   return NextResponse.json({ message: "Lease deleted" });
 }

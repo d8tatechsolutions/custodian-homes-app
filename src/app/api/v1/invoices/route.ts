@@ -6,6 +6,7 @@ import {
   readJsonBody,
   resolveInvoiceActor,
 } from "@/app/api/v1/_helpers";
+import { recordInvoiceAudit } from "@/lib/audit-records";
 import {
   billingFieldsFromAccount,
   resolveBillingAccountForLease,
@@ -379,6 +380,14 @@ export async function POST(request: NextRequest) {
       if (!created) {
         return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
       }
+      await recordInvoiceAudit(
+        request,
+        { userId: actor.userId, role: actor.role },
+        "invoice.created",
+        created,
+        null,
+        created,
+      );
       return NextResponse.json(
         { data: serializeInvoice(created, now, { includeServiceFeeItems: true }) },
         { status: 201 },

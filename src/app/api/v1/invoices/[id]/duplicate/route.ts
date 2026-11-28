@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody, resolveInvoiceActor } from "@/app/api/v1/_helpers";
 import { invoiceInScope } from "@/app/api/v1/invoices/_scope";
+import { recordInvoiceAudit } from "@/lib/audit-records";
 import { computeDueDate, isFuturePeriod, serializeInvoice } from "@/lib/invoicing";
 import { connectToDatabase } from "@/lib/mongoose";
 import { requirePermission } from "@/lib/permissions";
@@ -88,6 +89,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   if (!created) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
+  await recordInvoiceAudit(
+    request,
+    { userId: actor.userId, role: actor.role },
+    "invoice.created",
+    created,
+    null,
+    created,
+    {
+      copiedFrom: String(source._id),
+    },
+  );
   return NextResponse.json(
     { data: serializeInvoice(created, now, { includeServiceFeeItems: true }) },
     { status: 201 },

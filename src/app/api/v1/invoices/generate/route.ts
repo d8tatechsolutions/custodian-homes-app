@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody, resolveInvoiceActor } from "@/app/api/v1/_helpers";
+import { auditRequest, recordAudit } from "@/lib/audit-records";
 import { billingFieldsFromAccount, loadBillingAccountLookup } from "@/lib/billing-accounts";
 import { generateForPeriod, type InvoiceDraft } from "@/lib/invoice-generation";
 import { reserveInvoiceNumbers } from "@/lib/invoice-numbering";
@@ -261,6 +262,15 @@ export async function POST(request: NextRequest) {
   console.info(
     `[invoicing] generate actor=${actor.userId} role=${actor.role} period=${period} created=${created} skipped=${skippedCount}`,
   );
+
+  await recordAudit({
+    actor: { userId: actor.userId, role: actor.role },
+    action: "invoice.generated",
+    entityType: "invoice-run",
+    entityId: period,
+    after: { period, created, skipped: skippedCount },
+    request: auditRequest(request),
+  });
 
   return NextResponse.json({
     data: { created, skipped: skippedCount },

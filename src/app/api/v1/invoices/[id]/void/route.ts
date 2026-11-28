@@ -2,6 +2,7 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { resolveInvoiceActor } from "@/app/api/v1/_helpers";
+import { recordInvoiceAudit } from "@/lib/audit-records";
 import { canVoid, serializeInvoice } from "@/lib/invoicing";
 import { connectToDatabase } from "@/lib/mongoose";
 import { requirePermission } from "@/lib/permissions";
@@ -82,6 +83,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   }
 
   console.info(`[invoicing] void actor=${actor.userId} role=${actor.role} invoice=${id}`);
+  await recordInvoiceAudit(
+    request,
+    { userId: actor.userId, role: actor.role },
+    "invoice.voided",
+    invoice,
+    invoice,
+    updated,
+  );
 
   return NextResponse.json({ data: serializeInvoice(updated, new Date()) });
 }
