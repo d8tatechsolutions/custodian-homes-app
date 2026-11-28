@@ -451,11 +451,10 @@ describe("POST /api/v1/tasks", () => {
     expect(task.create).not.toHaveBeenCalled();
   });
 
-  it("admin with no assignment and no propertyId creates a task owned by themselves", async () => {
+  it("400 when an admin creates a task without a property (every task needs one)", async () => {
     user.findById.mockReturnValue(buildQuery(adminUser()));
     noAssignment();
     const created = makeTask({ _id: TASK_ID, ownerId: ADMIN_ID, propertyId: "" });
-    task.create.mockResolvedValue({ ...created, toObject: () => created });
 
     const res = await POST(
       buildRequest("/api/v1/tasks", {
@@ -470,13 +469,10 @@ describe("POST /api/v1/tasks", () => {
         },
       }),
     );
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toBe("Choose a property for this task");
     expect(property.findOne).not.toHaveBeenCalled();
-    expect(task.create).toHaveBeenCalledWith(
-      expect.objectContaining({ ownerId: ADMIN_ID, propertyId: "" }),
-    );
-    const body = await json(res);
-    expect((body.data as Record<string, unknown>).ownerId).toBe(ADMIN_ID);
+    expect(task.create).not.toHaveBeenCalled();
   });
 
   it("403 when an admin with no assignment creates on a property owned by another admin", async () => {

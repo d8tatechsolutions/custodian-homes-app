@@ -195,7 +195,9 @@ export async function POST(request: NextRequest) {
     }
     ownerId = property.ownerId;
   } else if (actor.role === "admin" || actor.role === "system-admin") {
-    ownerId = actor.userId;
+    // Every task belongs to a property (the model requires it); without one
+    // the insert failed with a 500, so ask for it instead.
+    return NextResponse.json({ error: "Choose a property for this task" }, { status: 400 });
   } else if (actor.role === "caretaker" || actor.role === "custodian") {
     // Without an explicit property, staff may only derive one when their
     // action-filtered scope is unambiguous.
