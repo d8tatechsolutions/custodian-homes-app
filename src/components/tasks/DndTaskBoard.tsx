@@ -43,28 +43,31 @@ interface DndTaskBoardProps<T> {
   emptyText?: string;
 }
 
-/** Arrow keys jump a picked-up card to the next / previous column. */
+/**
+ * Arrow keys jump a picked-up card to the next / previous column. dnd-kit's
+ * keyboard coordinates are the card's top-left corner, so columns are found
+ * by their left edge and the card is placed just inside the target column.
+ */
 const columnJump: KeyboardCoordinateGetter = (event, { context, currentCoordinates }) => {
-  const rects = [...context.droppableRects.values()].sort(
-    (a, b) => a.left - b.left || a.top - b.top,
-  );
-  if (rects.length === 0) return undefined;
-  const x = currentCoordinates.x;
-  const centre = (r: (typeof rects)[number]) => ({
-    x: r.left + r.width / 2,
-    y: r.top + Math.min(40, r.height / 2),
+  const all = [...context.droppableRects.values()];
+  if (all.length === 0) return undefined;
+  const forward = event.code === "ArrowRight" || event.code === "ArrowDown";
+  const backward = event.code === "ArrowLeft" || event.code === "ArrowUp";
+  if (!forward && !backward) return undefined;
+  event.preventDefault();
+  // Side by side on wide screens, stacked on phones: step along that axis.
+  const lefts = all.map((r) => r.left);
+  const horizontal = Math.max(...lefts) - Math.min(...lefts) > 10;
+  const start = (r: (typeof all)[number]) => (horizontal ? r.left : r.top);
+  const rects = all.sort((a, b) => start(a) - start(b));
+  const position = horizontal ? currentCoordinates.x : currentCoordinates.y;
+  // The column the card is in now: the last one starting at or before it.
+  let current = 0;
+  rects.forEach((r, i) => {
+    if (start(r) <= position + 1) current = i;
   });
-  if (event.code === "ArrowRight" || event.code === "ArrowDown") {
-    event.preventDefault();
-    const next = rects.find((r) => r.left + r.width / 2 > x + 1) ?? rects[rects.length - 1];
-    return centre(next);
-  }
-  if (event.code === "ArrowLeft" || event.code === "ArrowUp") {
-    event.preventDefault();
-    const prev = [...rects].reverse().find((r) => r.left + r.width / 2 < x - 1) ?? rects[0];
-    return centre(prev);
-  }
-  return undefined;
+  const target = rects[Math.max(0, Math.min(rects.length - 1, current + (forward ? 1 : -1)))];
+  return { x: target.left + 12, y: target.top + 48 };
 };
 
 /** The column under the pointer; falls back to overlap for keyboard and touch. */
