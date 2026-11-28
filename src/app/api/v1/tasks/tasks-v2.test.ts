@@ -430,6 +430,56 @@ describe("create (v2)", () => {
   });
 });
 
+describe("create (v2) — owner fallback", () => {
+  function createAsAdmin(body: Record<string, unknown> = {}) {
+    asAdmin();
+    property.findOne.mockReturnValue(buildQuery({ _id: PROPERTY, ownerId: ADMIN }));
+    task.create.mockImplementation(async (doc: Record<string, unknown>) => ({
+      ...doc,
+      _id: TASK,
+      toObject() {
+        return { ...doc, _id: TASK };
+      },
+    }));
+    return CREATE(
+      post("/api/v1/tasks", signToken(ADMIN), {
+        title: "Leak",
+        propertyId: PROPERTY,
+        dueDate: "2026-12-01",
+        ...body,
+      }),
+    );
+  }
+
+  it("gives an unassigned task to the owner when nobody manages the property", async () => {
+    managementAssignment.find.mockReturnValue(buildQuery([]));
+    const res = await createAsAdmin();
+    expect(res.status).toBe(201);
+    expect(task.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assignedTo: ADMIN,
+        assignedToName: "Owner",
+        assignee: { kind: "staff", userId: ADMIN, vendorId: "", name: "Owner" },
+      }),
+    );
+    expect(extra.taskActivity.create).toHaveBeenCalled();
+  });
+
+  it("leaves it unassigned when a custodian manages the property", async () => {
+    managementAssignment.find.mockImplementation((query: Record<string, unknown>) =>
+      buildQuery(
+        query.accessRole ? [{ principalUserId: OTHER, startsAt: null, endsAt: null }] : [],
+      ),
+    );
+    user.countDocuments.mockResolvedValue(1);
+    const res = await createAsAdmin();
+    expect(res.status).toBe(201);
+    expect(task.create).toHaveBeenCalledWith(
+      expect.objectContaining({ assignee: null, assignedTo: "" }),
+    );
+  });
+});
+
 describe("bill tenant", () => {
   it("creates a draft repair invoice with no lease and zero rent", async () => {
     asAdmin();

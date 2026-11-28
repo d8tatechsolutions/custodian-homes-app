@@ -1,5 +1,6 @@
 import { isDuplicateKeyError } from "@/app/api/v1/_helpers";
 import { recordTaskActivity } from "@/lib/maintenance/activity";
+import { ownerFallbackAssignee } from "@/lib/maintenance/assignee";
 import { addDays, nairobiToday } from "@/lib/maintenance/dates";
 import { type NoticeTask, notifyTaskAssigned, notifyVendorJob } from "@/lib/maintenance/notify";
 import {
@@ -68,6 +69,10 @@ export async function generateScheduleOccurrences(
 
   const scheduleId = String(schedule._id);
   const hasAssignee = schedule.assignee?.kind === "staff" || schedule.assignee?.kind === "vendor";
+  // A schedule with no assignee on a property nobody manages: the owner gets it.
+  const ownerFallback = hasAssignee
+    ? null
+    : await ownerFallbackAssignee(schedule.propertyId, schedule.ownerId, now);
   let created = 0;
   for (const { day } of due) {
     try {
@@ -82,9 +87,15 @@ export async function generateScheduleOccurrences(
         dueDate: addDays(day, schedule.dueAfterDays ?? 0),
         scheduledFor: day,
         location: schedule.location?.kind ? schedule.location : undefined,
-        assignee: hasAssignee ? schedule.assignee : null,
-        assignedTo: schedule.assignee?.kind === "staff" ? (schedule.assignee.userId ?? "") : "",
-        assignedToName: hasAssignee ? (schedule.assignee?.name ?? "") : "",
+        assignee: hasAssignee ? schedule.assignee : (ownerFallback?.assignee ?? null),
+        assignedTo: hasAssignee
+          ? schedule.assignee?.kind === "staff"
+            ? (schedule.assignee.userId ?? "")
+            : ""
+          : (ownerFallback?.assignedTo ?? ""),
+        assignedToName: hasAssignee
+          ? (schedule.assignee?.name ?? "")
+          : (ownerFallback?.assignedToName ?? ""),
         createdBy: schedule.createdBy,
         createdByRole: schedule.createdByRole,
         createdByName: "Recurring schedule",
@@ -96,7 +107,9 @@ export async function generateScheduleOccurrences(
         task,
         { userId: "system", role: "system", name: "Recurring schedule" },
         "created",
-        `Created by the recurring schedule for ${day}`,
+        ownerFallback
+          ? `Created by the recurring schedule for ${day} and assigned to ${ownerFallback.assignedToName || "the owner"} (no staff manage this property)`
+          : `Created by the recurring schedule for ${day}`,
         { scheduleId, occurrenceDate: day },
       );
       const copy = task.toObject() as NoticeTask;

@@ -19,10 +19,10 @@ export const SupportEmailNote = () => (
       </a>
       . Check spam if you don&apos;t see them. Need a hand? Email{" "}
       <a
-        href={`mailto:${BRAND.emails.support}`}
+        href={`mailto:${BRAND.emails.info}`}
         className="font-medium text-foreground underline-offset-4 hover:underline"
       >
-        {BRAND.emails.support}
+        {BRAND.emails.info}
       </a>
       .
     </span>

@@ -78,3 +78,56 @@ export async function resolveAssignee(
     assignedToName: user.name ?? "",
   };
 }
+
+const MANAGING_ROLES = new Set(["caretaker", "custodian"]);
+
+/**
+ * Owner fallback (decided 2026-11-28): a task that would otherwise be left
+ * unassigned goes to the property owner, but only when nobody manages the
+ * property — no active caretaker (agents included) or custodian assignment
+ * that is live today and belongs to an active account. Returns null when
+ * someone does manage it, or when the owner's account is not active, so the
+ * existing behaviour (unassigned, for staff to pick up) is kept.
+ */
+export async function ownerFallbackAssignee(
+  propertyId: string,
+  ownerId: string,
+  now = new Date(),
+): Promise<ResolvedAssignee | null> {
+  if (!propertyId || !ownerId) return null;
+
+  const rows = (await ManagementAssignment.find({
+    propertyId,
+    accessRole: { $in: [...MANAGING_ROLES] },
+    status: "active",
+  })
+    .select("principalUserId startsAt endsAt")
+    .lean()) as { principalUserId: string; startsAt?: Date | null; endsAt?: Date | null }[];
+  const live = rows.filter(
+    (r) =>
+      r.principalUserId !== ownerId &&
+      (!r.startsAt || new Date(r.startsAt).getTime() <= now.getTime()) &&
+      (!r.endsAt || new Date(r.endsAt).getTime() > now.getTime()),
+  );
+  if (live.length > 0) {
+    const managers = await User.countDocuments({
+      _id: { $in: live.map((r) => r.principalUserId) },
+      isActive: true,
+      role: { $in: [...MANAGING_ROLES] },
+    });
+    if (managers > 0) return null;
+  }
+
+  const owner = (await User.findById(ownerId).select("name isActive").lean()) as {
+    _id: unknown;
+    name?: string;
+    isActive?: boolean;
+  } | null;
+  if (!owner?.isActive) return null;
+  const name = owner.name ?? "";
+  return {
+    assignee: { kind: "staff", userId: ownerId, vendorId: "", name },
+    assignedTo: ownerId,
+    assignedToName: name,
+  };
+}

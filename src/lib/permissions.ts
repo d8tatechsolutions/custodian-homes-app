@@ -17,7 +17,7 @@ import {
   type PolicyAction,
   TENANT_ACTIONS,
 } from "@/lib/authorization-policy";
-import { getJwtSecret } from "@/lib/jwt";
+import { getJwtSecret, JWT_VERIFY_OPTIONS } from "@/lib/jwt";
 import { connectToDatabase } from "@/lib/mongoose";
 import { loadUnitResource } from "@/lib/policy-resources";
 import { ManagementAssignment } from "@/models/ManagementAssignment";
@@ -122,7 +122,7 @@ export function authenticate(request: Request): AuthUser | null {
     ?.split("=")[1];
   if (!token) return null;
   try {
-    const payload = jwt.verify(token, getJwtSecret()) as {
+    const payload = jwt.verify(token, getJwtSecret(), JWT_VERIFY_OPTIONS) as {
       userId: string;
       role: Role;
       name?: string;

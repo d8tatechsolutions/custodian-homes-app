@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody, resolveInvoiceActor } from "@/app/api/v1/_helpers";
 import { invoiceInScope } from "@/app/api/v1/invoices/_scope";
+import { recordInvoiceAudit } from "@/lib/audit-records";
 import { canDelete, isFuturePeriod, resolveDueDate, serializeInvoice } from "@/lib/invoicing";
 import { connectToDatabase } from "@/lib/mongoose";
 import { asSoftDeleteModel } from "@/lib/mongoose-soft-delete";
@@ -142,6 +143,14 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       { status: 409 },
     );
   }
+  await recordInvoiceAudit(
+    request,
+    { userId: actor.userId, role: actor.role },
+    "invoice.updated",
+    invoice,
+    invoice,
+    updated,
+  );
 
   return NextResponse.json({
     data: serializeInvoice(updated, new Date(), { includeServiceFeeItems: true }),
@@ -182,6 +191,14 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   }
 
   await asSoftDeleteModel(Invoice).softDeleteById(id);
+  await recordInvoiceAudit(
+    request,
+    { userId: actor.userId, role: actor.role },
+    "invoice.deleted",
+    invoice,
+    invoice,
+    null,
+  );
 
   return NextResponse.json({ message: "Invoice deleted" });
 }

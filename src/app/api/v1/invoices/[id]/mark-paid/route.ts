@@ -2,6 +2,7 @@ import { isValidObjectId } from "mongoose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { readJsonBody, resolveInvoiceActor } from "@/app/api/v1/_helpers";
+import { recordInvoiceAudit } from "@/lib/audit-records";
 import { accrueCommissionForSettledInvoice } from "@/lib/commission";
 import {
   canMarkPaid,
@@ -144,6 +145,18 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     // between our read and this conditional update — never overwrite it.
     return NextResponse.json({ error: "Invoice was updated by another request" }, { status: 409 });
   }
+
+  await recordInvoiceAudit(
+    request,
+    { userId: actor.userId, role: actor.role },
+    "invoice.payment_recorded",
+    invoice,
+    invoice,
+    updated,
+    {
+      amountThisPayment: settlement.amountPaid - (invoice.amountPaid ?? 0),
+    },
+  );
 
   console.info(
     `[invoicing] mark-paid actor=${actor.userId} role=${actor.role} invoice=${id} amountPaid=${settlement.amountPaid} status=${settlement.status}`,

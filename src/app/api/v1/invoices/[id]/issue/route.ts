@@ -7,6 +7,7 @@ import {
   resolveInvoiceActor,
 } from "@/app/api/v1/_helpers";
 import { invoiceInScope } from "@/app/api/v1/invoices/_scope";
+import { recordInvoiceAudit } from "@/lib/audit-records";
 import { nextInvoiceNumber } from "@/lib/invoice-numbering";
 import {
   canIssue,
@@ -93,6 +94,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       if (!updated) {
         return NextResponse.json({ error: "This draft was already issued" }, { status: 409 });
       }
+      await recordInvoiceAudit(
+        request,
+        { userId: actor.userId, role: actor.role },
+        "invoice.issued",
+        invoice,
+        invoice,
+        updated,
+      );
       return NextResponse.json({
         data: serializeInvoice(updated, now, { includeServiceFeeItems: true }),
       });

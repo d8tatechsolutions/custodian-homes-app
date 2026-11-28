@@ -1,7 +1,22 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MaintenanceTask } from "@/types/maintenance";
+
+// jsdom has no layout, so pointer drags can't be simulated; capture the
+// board's drop handler from DndContext and call it with a real drop event.
+const dnd = vi.hoisted(() => ({ onDragEnd: null as null | ((event: unknown) => void) }));
+vi.mock("@dnd-kit/core", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@dnd-kit/core")>();
+  const { createElement } = await import("react");
+  return {
+    ...real,
+    DndContext: (props: Parameters<typeof real.DndContext>[0]) => {
+      dnd.onDragEnd = (props.onDragEnd as (event: unknown) => void) ?? null;
+      return createElement(real.DndContext, props);
+    },
+  };
+});
 
 vi.mock("@/lib/uploadthing", () => ({
   useUploadThing: () => ({ startUpload: vi.fn().mockResolvedValue([]), isUploading: false }),
@@ -104,14 +119,25 @@ describe("TaskListView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Board" }));
     const card = (await screen.findByRole("link", { name: "Fix the gate" })).closest("li");
     if (!card) throw new Error("card not found");
-    expect(card).toHaveAttribute("draggable", "true");
+    expect(card).toHaveAttribute("aria-roledescription", "draggable");
+    expect(screen.getByRole("region", { name: "In progress tasks" })).toBeInTheDocument();
 
-    const dataTransfer = { setData: vi.fn(), effectAllowed: "" };
-    fireEvent.dragStart(card, { dataTransfer });
-    const inProgress = screen.getByRole("region", { name: "In progress" });
-    fireEvent.dragOver(inProgress, { dataTransfer });
-    fireEvent.drop(inProgress, { dataTransfer });
+    act(() => dnd.onDragEnd?.({ active: { id: "a" }, over: { id: "in-progress" } }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("ignores a drop on a column the task can't move to", async () => {
+    mockApi({
+      "/api/v1/tasks?": [task({ _id: "w", title: "Awaiting quote", status: "waiting-approval" })],
+      "/api/v1/task-categories": [],
+    });
+    render(<TaskListView viewerRole="admin" currentUserId="admin-1" basePath="/x" />);
+    await screen.findByRole("table");
+    await userEvent.click(screen.getByRole("button", { name: "Board" }));
+    await screen.findByRole("link", { name: "Awaiting quote" });
+
+    act(() => dnd.onDragEnd?.({ active: { id: "w" }, over: { id: "open" } }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("shows the empty state when there is nothing yet", async () => {

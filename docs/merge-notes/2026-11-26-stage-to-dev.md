@@ -1,6 +1,6 @@
 # Merging `stage` → `dev` (2026-11-26)
 
-`dev` has only moved by the merge commit of PR #6 (`stage` up to `ab6f97c`), so merging
+`dev` has only moved by merge commits of `stage` (PR #6, then `e46733f`), so merging
 `stage` again has no conflicts. Merge it as is (merge commit or fast-forward; please don't
 squash, the commits are grouped by area so they're easy to review and revert).
 
@@ -262,10 +262,67 @@ Decisions marked *(client)* were approved by the client before the change.
   routes, so it was left for a separate change.
 - **Public email:** the footer, contact page, FAQ, privacy and terms now show
   `info@custodianhomes.co.ke`. Signed-in help notes, email footers, and the inbox that receives
-  contact-form messages still use `support@`.
+  contact-form messages still use `support@` (changed on 2026-11-28, see below).
 - **Checking Biome on Windows:** with `core.autocrlf=true`, `biome check .` reports every
   file as misformatted (CRLF). To see what CI sees, check an LF worktree:
   `git -c core.autocrlf=false worktree add --detach <dir> stage`, then run Biome there.
+
+## Owner fallback, history, drag-and-drop board, region, hardening (2026-11-28)
+
+Decided with the project lead on 2026-11-28 (the client's answers to the open questions are
+still pending; nothing here depends on them).
+
+- **Tasks go to the owner when nobody manages the property.** If a property has no active
+  caretaker, agent (a caretaker titled "agent") or custodian, a task that would be left
+  unassigned is assigned to the owner. This covers tasks from tenant complaints, recurring tasks
+  with no assignee, and new tasks created with no assignee (v1 and v2). If any of those staff
+  exist, nothing changes. The task history says why the owner received it
+  (`lib/maintenance/assignee.ts` `ownerFallbackAssignee`).
+- **Every task needs a property.** An owner who left the property on "All properties" used to
+  get a 500 (the model requires it). They now get 400 "Choose a property for this task".
+- **History (audit) page for every role** (`/dashboard/<role>/history`, `GET /api/v1/audit`):
+  - System admin: everything, and can add notes (`POST /api/v1/audit/:id/notes`, new
+    `auditnotes` collection). Entries themselves are never edited or deleted.
+  - Owner: entries on properties they own or are assigned to, and their own actions.
+  - Custodian / caretaker: entries on properties they are actively assigned to, and their own
+    actions, with phone, email and ID numbers hidden.
+  - Tenant: their own invoices, leases, account and actions; staff are shown by role, not name.
+  - Broker: their own actions and account.
+  - Request fingerprints (`ipHash`, `userAgentHash`, `requestId`) are never sent.
+- **Newly recorded in the history:** invoices created, issued, edited, voided, deleted and
+  generated; payments recorded by hand; online payments; **online payments of the wrong
+  amount** (not applied, now visible to the owner); leases created, changed (rent, dates),
+  ended and deleted. Writes are best-effort (`lib/audit-records.ts`) and never block the
+  action.
+- **Drag-and-drop task board** (`@dnd-kit/core` 6.3.1, MIT): owners and caretakers get a
+  List / Board toggle on the current task pages; the v2 board uses the same component. Mouse
+  drag, touch press-and-hold, and keyboard (Space, arrows, Space). Allowed moves are exactly the
+  existing buttons (v1) or the v2 transition rules; every card keeps a "Move to…" menu.
+- **Region:** `vercel.json` now sets `"regions": ["hnd1"]` (Tokyo), next to the Atlas
+  cluster (AWS ap-northeast-1). Functions run in UTC in every region and the cron schedule is
+  UTC, so dates and the daily job are unchanged. Pages and cached responses still come from
+  Vercel's nearest edge.
+- **Errors never expose system details:** `lib/public-error.ts` passes through the app's own
+  messages and replaces database, driver and runtime errors with a generic message (the real
+  error is logged). `/api/health` no longer returns the driver error, which could name the
+  cluster host.
+- **Sessions and sign-in:** tokens are signed and verified as HS256 only (other algorithms and
+  unsigned tokens are rejected; existing sessions are HS256). Sign-in takes the same time
+  whether or not the account exists, and an account without a password fails like a wrong
+  password. Identifier capped at 320 characters.
+- **UI:**
+  - The desktop sidebar's links scroll inside it, so opening a group no longer pushes
+    "Need help?" out of the box.
+  - Dropdown lists never run off screen.
+  - Page titles get their own row on phones.
+  - Every address shown in the app and in emails is `info@`. Contact-form messages are still
+    delivered to `support@`.
+- **Verified:**
+  - In a real browser: 120 overlay checks (every sidebar group at three desktop heights, and
+    every dropdown on key pages) and 182 page loads across all roles at phone and desktop
+    width, with no overflow or errors.
+  - On the dev database: the board's mouse, keyboard and phone moves, and the owner fallback.
+    Test data was removed afterwards.
 
 ## Still open
 
@@ -275,10 +332,9 @@ Decisions marked *(client)* were approved by the client before the change.
 - The general rate limiter and the new per-IP ceiling are in memory per server instance.
   Large distributed floods are handled by Vercel's built-in network protection. Vercel's
   Firewall rules and Attack Challenge Mode are dashboard settings, left to the client.
-- **Function and database region:** `vercel.json` sets no region, so functions run in
-  Vercel's default (US East). If the Atlas cluster is in another region, every query crosses
-  regions. This is the largest latency lever: check both regions and align them. It's a
-  Vercel/Atlas setting, not code.
+- **Atlas backups are inactive** on the cluster (Tokyo, 3-node replica set). Turn on
+  continuous or snapshot backups in Atlas; nothing in the app can replace them.
+- About 125 `any` warnings remain in the broker, attribution and commission code.
 - About 150 free-text fields have no individual length cap. The 1 MB body limit bounds them.
 
 ## Local `.env` note

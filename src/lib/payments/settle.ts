@@ -1,3 +1,4 @@
+import { recordInvoiceAudit } from "@/lib/audit-records";
 import { accrueCommissionForSettledInvoice } from "@/lib/commission";
 import { notifyInvoicePaid } from "@/lib/notifications";
 import {
@@ -186,6 +187,9 @@ async function recordPaymentSplit(
  * Never throws for provider/ledger inconsistencies: every outcome except a
  * genuine database failure is classified and returned so the webhook can ack.
  */
+/** Provider callbacks act as the system, not as a signed-in user. */
+const SYSTEM_ACTOR = { userId: "system", role: "system" };
+
 export async function applyProviderPayment(
   input: ApplyProviderPaymentInput,
 ): Promise<{ outcome: ApplyProviderPaymentOutcome }> {
@@ -221,6 +225,20 @@ export async function applyProviderPayment(
     // Never auto-settle a wrong amount; record it for staff review and leave
     // the invoice pending.
     await recordMismatch(payment, invoice, expectedMinor, input, paidAt);
+    await recordInvoiceAudit(
+      null,
+      SYSTEM_ACTOR,
+      "invoice.online_payment_mismatch",
+      invoice,
+      invoice,
+      invoice,
+      {
+        provider: input.provider,
+        providerReference: input.providerReference,
+        amountReceived: input.amountMinor / 100,
+        amountExpected: expectedMinor / 100,
+      },
+    );
     return { outcome: "amount-mismatch" };
   }
 
@@ -256,6 +274,10 @@ export async function applyProviderPayment(
   }
 
   await flipPaymentToSuccess(payment, paidAt, input.source, invoice);
+  await recordInvoiceAudit(null, SYSTEM_ACTOR, "invoice.paid_online", invoice, invoice, updated, {
+    provider: input.provider,
+    providerReference: input.providerReference,
+  });
 
   try {
     await notifyInvoicePaid(updated);

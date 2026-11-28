@@ -1,3 +1,4 @@
+import { ownerFallbackAssignee } from "@/lib/maintenance/assignee";
 import { addDays, nairobiToday } from "@/lib/maintenance/dates";
 import { COMPLAINT_TASK_DUE_DAYS } from "@/lib/maintenance/enums";
 import { type NoticeTask, notifyTaskAssigned } from "@/lib/maintenance/notify";
@@ -141,6 +142,13 @@ export async function createTaskForComplaint(
     }
 
     const caretaker = await pickCaretakerForComplaint(complaint.propertyId, complaint.unitId, now);
+    // Nobody manages the property at all: the owner receives the task.
+    const ownerFallback = caretaker
+      ? null
+      : await ownerFallbackAssignee(complaint.propertyId, complaint.ownerId, now);
+    const assigned = caretaker
+      ? { kind: "staff" as const, userId: caretaker.userId, name: caretaker.name }
+      : (ownerFallback?.assignee ?? null);
 
     const task = await Task.create({
       ownerId: complaint.ownerId,
@@ -157,11 +165,9 @@ export async function createTaskForComplaint(
       location: complaint.unitId
         ? { kind: "unit", unitId: complaint.unitId, blockId, floorId, label: locationLabel }
         : { kind: "property", label: "" },
-      assignee: caretaker
-        ? { kind: "staff", userId: caretaker.userId, name: caretaker.name }
-        : null,
-      assignedTo: caretaker?.userId ?? "",
-      assignedToName: caretaker?.name ?? "",
+      assignee: assigned,
+      assignedTo: assigned?.userId ?? "",
+      assignedToName: assigned?.name ?? "",
       complaintIds: [complaintId],
     });
     const taskId = String(task._id);
@@ -176,10 +182,12 @@ export async function createTaskForComplaint(
       kind: "created",
       message: caretaker
         ? `Created from a tenant complaint and assigned to ${caretaker.name || "the caretaker"}`
-        : "Created from a tenant complaint (no caretaker assigned to this location)",
+        : ownerFallback
+          ? `Created from a tenant complaint and assigned to ${ownerFallback.assignedToName || "the owner"} (no staff manage this property)`
+          : "Created from a tenant complaint (no caretaker assigned to this location)",
       data: { complaintId },
     });
-    if (caretaker) {
+    if (assigned) {
       await notifyTaskAssigned(task.toObject() as NoticeTask, {
         userId: "system",
         role: "system",

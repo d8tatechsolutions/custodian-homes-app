@@ -10,6 +10,7 @@ import {
   FileText,
   Handshake,
   Heart,
+  History,
   Home,
   Mail,
   MessagesSquare,
@@ -107,6 +108,7 @@ const baseSections = [
   { slug: "/documents", label: "Tenant Documents", icon: FileText, group: "operations" },
   { slug: "/notifications", label: "Notifications", icon: Bell, group: "operations" },
   { slug: "/settings", label: "Settings", icon: Settings, group: "administration" },
+  { slug: "/history", label: "History", icon: History, group: "administration" },
 ] satisfies readonly Section[];
 
 const caretakerSections = baseSections.filter(
@@ -129,12 +131,19 @@ const custodianSections = baseSections.filter((s) =>
     "/communications",
     "/notifications",
     "/settings",
+    "/history",
   ].includes(s.slug),
 );
 const systemAdminSections = baseSections.filter((s) =>
-  ["", "/portfolio", "/tenants", "/communications", "/notifications", "/accounting"].includes(
-    s.slug,
-  ),
+  [
+    "",
+    "/portfolio",
+    "/tenants",
+    "/communications",
+    "/notifications",
+    "/accounting",
+    "/history",
+  ].includes(s.slug),
 );
 
 const brokerSections = [
@@ -145,6 +154,7 @@ const brokerSections = [
   { slug: "/messages", label: "Messages", icon: MessagesSquare, group: "operations" },
   { slug: "/commissions", label: "Commissions", icon: Calculator, group: "finance" },
   { slug: "/profile", label: "Broker Profile", icon: Settings, group: "administration" },
+  { slug: "/history", label: "History", icon: History, group: "administration" },
 ] satisfies readonly Section[];
 
 export const buildDashboardNav = (role: Exclude<Role, "tenant">): DashNavItem[] => {
@@ -270,6 +280,7 @@ const tenantSections: TenantSection[] = [
   { slug: "/documents", label: "Documents", icon: FileText, group: "personal" },
   { slug: "/notifications", label: "Notifications", icon: Bell, group: "personal" },
   { slug: "/settings", label: "Settings", icon: Settings, group: "personal" },
+  { slug: "/history", label: "History", icon: History, group: "personal" },
 ];
 
 export const tenantNav: DashNavItem[] = tenantSections.map((s) => ({

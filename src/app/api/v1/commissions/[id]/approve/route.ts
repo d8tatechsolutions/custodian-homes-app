@@ -5,6 +5,7 @@ import { authenticateSession } from "@/lib/auth-scope";
 import { approveAccrual } from "@/lib/commission";
 import { connectToDatabase } from "@/lib/mongoose";
 import type { Role } from "@/lib/permissions";
+import { publicErrorMessage } from "@/lib/public-error";
 import { User } from "@/models/User";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -27,8 +28,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const accrual = await approveAccrual({ userId: String(user._id), role: user.role as Role }, id);
     return NextResponse.json({ data: accrual });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to approve commission";
-    const status = message.includes("not found") ? 404 : 400;
+    const raw = error instanceof Error ? error.message : "";
+    const message = publicErrorMessage(error, "Failed to approve commission");
+    const status = raw.includes("not found") ? 404 : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { SearchInput } from "@/components/SearchInput";
 import { StatCard } from "@/components/StatCard";
+import { LegacyTaskBoard, type TaskView, TaskViewToggle } from "@/components/tasks/LegacyTaskBoard";
 import { TasksPageSwitch } from "@/components/tasks/TasksPageSwitch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ const AdminTasksPage = () => {
   const { createTask, updateTask, pending } = useTaskMutations();
 
   const [filter, setFilter] = useState<Filter>("open");
+  const [view, setView] = useState<TaskView>("list");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -74,11 +76,10 @@ const AdminTasksPage = () => {
   const openCount = items.filter((t) => t.status === "open").length;
   const inProgressCount = items.filter((t) => t.status === "in-progress").length;
   const doneCount = items.filter((t) => t.status === "done").length;
-  const visible = items
-    .filter((t) => t.status === filter)
-    .filter((t) =>
-      matchesQuery(query, t.title, t.property, resolveAssignee(t), t.notes, t.priority, t.status),
-    );
+  const matching = items.filter((t) =>
+    matchesQuery(query, t.title, t.property, resolveAssignee(t), t.notes, t.priority, t.status),
+  );
+  const visible = matching.filter((t) => t.status === filter);
 
   const submit = async () => {
     if (!title.trim()) {
@@ -112,9 +113,7 @@ const AdminTasksPage = () => {
     }
   };
 
-  const advance = async (t: { _id: string; status: TaskStatus }) => {
-    const next: TaskStatus =
-      t.status === "open" ? "in-progress" : t.status === "in-progress" ? "done" : "open";
+  const moveTo = async (t: { _id: string }, next: TaskStatus) => {
     try {
       await updateTask(t._id, { status: next });
       toast.success(`Task moved to ${next}`);
@@ -123,6 +122,9 @@ const AdminTasksPage = () => {
       toast.error(err instanceof Error ? err.message : "Failed to update task");
     }
   };
+
+  const advance = (t: { _id: string; status: TaskStatus }) =>
+    moveTo(t, t.status === "open" ? "in-progress" : t.status === "in-progress" ? "done" : "open");
 
   return (
     <DashboardShell
@@ -145,13 +147,18 @@ const AdminTasksPage = () => {
       </div>
 
       <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
-          <TabsList>
-            <TabsTrigger value="open">Open ({openCount})</TabsTrigger>
-            <TabsTrigger value="in-progress">In progress ({inProgressCount})</TabsTrigger>
-            <TabsTrigger value="done">Resolved ({doneCount})</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <TaskViewToggle view={view} onChange={setView} />
+          {view === "list" && (
+            <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
+              <TabsList>
+                <TabsTrigger value="open">Open ({openCount})</TabsTrigger>
+                <TabsTrigger value="in-progress">In progress ({inProgressCount})</TabsTrigger>
+                <TabsTrigger value="done">Resolved ({doneCount})</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+        </div>
         <div className="w-full sm:w-72">
           <SearchInput
             placeholder="Search by title, property, assignee…"
@@ -172,54 +179,67 @@ const AdminTasksPage = () => {
         </div>
       )}
 
-      <div className="mt-6 space-y-3">
-        {!loading && visible.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">
-            No {filter} tasks match your query.
-          </div>
-        ) : (
-          visible.map((t) => (
-            <div
-              key={t._id}
-              className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 shadow-soft transition-all hover:border-primary/40 md:flex-row md:items-center md:justify-between"
-            >
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-medium text-foreground">{t.title}</h4>
-                  <Badge variant="outline" className={priorityClass[t.priority as TaskPriority]}>
-                    {t.priority}
-                  </Badge>
-                  <Badge variant="outline" className={statusClass[t.status as TaskStatus]}>
-                    {t.status}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {t.property || "—"} · Assigned to {resolveAssignee(t) || "—"} · Due{" "}
-                  {formatDate(t.dueDate)}
-                </p>
-                {t.notes && <p className="text-xs text-muted-foreground/80 italic">{t.notes}</p>}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-full"
-                  disabled={pending}
-                  onClick={() => advance({ _id: t._id, status: t.status as TaskStatus })}
-                >
-                  <Wrench className="mr-1.5 h-3.5 w-3.5" />
-                  {t.status === "open"
-                    ? "Start task"
-                    : t.status === "in-progress"
-                      ? "Mark done"
-                      : "Reopen"}
-                </Button>
-              </div>
+      {view === "board" ? (
+        <div className="mt-6">
+          {!loading && (
+            <LegacyTaskBoard
+              tasks={matching}
+              resolveAssignee={resolveAssignee}
+              disabled={pending}
+              onMove={(t, to) => moveTo(t, to)}
+            />
+          )}
+        </div>
+      ) : (
+        <div className="mt-6 space-y-3">
+          {!loading && visible.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">
+              No {filter} tasks match your query.
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            visible.map((t) => (
+              <div
+                key={t._id}
+                className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 shadow-soft transition-all hover:border-primary/40 md:flex-row md:items-center md:justify-between"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-medium text-foreground">{t.title}</h4>
+                    <Badge variant="outline" className={priorityClass[t.priority as TaskPriority]}>
+                      {t.priority}
+                    </Badge>
+                    <Badge variant="outline" className={statusClass[t.status as TaskStatus]}>
+                      {t.status}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {t.property || "—"} · Assigned to {resolveAssignee(t) || "—"} · Due{" "}
+                    {formatDate(t.dueDate)}
+                  </p>
+                  {t.notes && <p className="text-xs text-muted-foreground/80 italic">{t.notes}</p>}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    disabled={pending}
+                    onClick={() => advance({ _id: t._id, status: t.status as TaskStatus })}
+                  >
+                    <Wrench className="mr-1.5 h-3.5 w-3.5" />
+                    {t.status === "open"
+                      ? "Start task"
+                      : t.status === "in-progress"
+                        ? "Mark done"
+                        : "Reopen"}
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-[480px]">

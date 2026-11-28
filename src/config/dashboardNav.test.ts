@@ -26,6 +26,7 @@ describe("tenant navigation", () => {
       "Documents",
       "Notifications",
       "Settings",
+      "History",
     ]);
   });
 
@@ -41,6 +42,7 @@ describe("tenant navigation", () => {
       "/dashboard/tenant/documents",
       "/dashboard/tenant/notifications",
       "/dashboard/tenant/settings",
+      "/dashboard/tenant/history",
     ]);
   });
 
@@ -54,6 +56,7 @@ describe("tenant navigation", () => {
       "/dashboard/tenant/documents",
       "/dashboard/tenant/notifications",
       "/dashboard/tenant/settings",
+      "/dashboard/tenant/history",
     ]);
   });
 });
@@ -109,6 +112,7 @@ describe("broker navigation", () => {
       "/dashboard/broker/messages",
       "/dashboard/broker/commissions",
       "/dashboard/broker/profile",
+      "/dashboard/broker/history",
     ]);
   });
 });
@@ -150,7 +154,7 @@ describe("nav grouping", () => {
       ["properties", "Properties", 2],
       ["people", "People", 5],
       ["operations", "Operations", 6],
-      ["administration", "Administration", 3],
+      ["administration", "Administration", 4],
     ]);
   });
 
@@ -158,7 +162,7 @@ describe("nav grouping", () => {
     expect(groupNavItems(tenantNav).map((g) => [g.id, g.items.length])).toEqual([
       ["overview", 1],
       ["listings", 1],
-      ["personal", 8],
+      ["personal", 9],
     ]);
   });
 
@@ -169,7 +173,7 @@ describe("nav grouping", () => {
       ["people", 2],
       ["operations", 1],
       ["finance", 1],
-      ["administration", 1],
+      ["administration", 2],
     ]);
   });
 

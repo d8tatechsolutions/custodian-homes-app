@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 import { decryptFieldOrEmpty } from "@/lib/crypto";
-import { getJwtSecret } from "@/lib/jwt";
+import { getJwtSecret, JWT_VERIFY_OPTIONS } from "@/lib/jwt";
 import { getManagedOwnerId } from "@/lib/managed-owner";
 import { connectToDatabase } from "@/lib/mongoose";
 import { User } from "@/models/User";
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ user: null });
     }
 
-    const decoded = jwt.verify(token, getJwtSecret()) as {
+    const decoded = jwt.verify(token, getJwtSecret(), JWT_VERIFY_OPTIONS) as {
       userId: string;
     };
     await connectToDatabase();

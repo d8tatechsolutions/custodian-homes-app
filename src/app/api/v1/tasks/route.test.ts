@@ -451,11 +451,10 @@ describe("POST /api/v1/tasks", () => {
     expect(task.create).not.toHaveBeenCalled();
   });
 
-  it("admin with no assignment and no propertyId creates a task owned by themselves", async () => {
+  it("400 when an admin creates a task without a property (every task needs one)", async () => {
     user.findById.mockReturnValue(buildQuery(adminUser()));
     noAssignment();
     const created = makeTask({ _id: TASK_ID, ownerId: ADMIN_ID, propertyId: "" });
-    task.create.mockResolvedValue({ ...created, toObject: () => created });
 
     const res = await POST(
       buildRequest("/api/v1/tasks", {
@@ -470,13 +469,10 @@ describe("POST /api/v1/tasks", () => {
         },
       }),
     );
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toBe("Choose a property for this task");
     expect(property.findOne).not.toHaveBeenCalled();
-    expect(task.create).toHaveBeenCalledWith(
-      expect.objectContaining({ ownerId: ADMIN_ID, propertyId: "" }),
-    );
-    const body = await json(res);
-    expect((body.data as Record<string, unknown>).ownerId).toBe(ADMIN_ID);
+    expect(task.create).not.toHaveBeenCalled();
   });
 
   it("403 when an admin with no assignment creates on a property owned by another admin", async () => {
@@ -503,5 +499,66 @@ describe("POST /api/v1/tasks", () => {
     expect(res.status).toBe(403);
     expect(property.findOne).toHaveBeenCalledWith({ _id: OTHER_PROPERTY_ID, deletedAt: null });
     expect(task.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v1/tasks — owner fallback when nobody manages the property", () => {
+  beforeEach(() => {
+    resetModelStubs();
+    user.findById.mockReturnValue(buildQuery(adminUser()));
+    property.findOne.mockReturnValue(buildQuery({ _id: PROPERTY_ID, ownerId: ADMIN_ID }));
+    property.find.mockReturnValue(buildQuery([{ _id: PROPERTY_ID, title: "Sunlit Studio" }]));
+    const created = makeTask({ _id: TASK_ID, propertyId: PROPERTY_ID, ownerId: ADMIN_ID });
+    task.create.mockResolvedValue({ ...created, toObject: () => created });
+  });
+
+  function post(extra: Record<string, unknown> = {}) {
+    return POST(
+      buildRequest("/api/v1/tasks", {
+        method: "POST",
+        token: signToken(ADMIN_ID),
+        body: {
+          title: "Fix tap",
+          propertyId: PROPERTY_ID,
+          priority: "medium",
+          status: "open",
+          dueDate: "2026-12-10",
+          ...extra,
+        },
+      }),
+    );
+  }
+
+  it("assigns an unassigned task to the owner when no caretaker, agent or custodian exists", async () => {
+    noAssignment();
+    const res = await post();
+    expect(res.status).toBe(201);
+    expect(task.create).toHaveBeenCalledWith(
+      expect.objectContaining({ assignedTo: ADMIN_ID, assignedToName: "Test Owner" }),
+    );
+  });
+
+  it("leaves the task unassigned when a caretaker manages the property", async () => {
+    managementAssignment.find.mockImplementation((query: Record<string, unknown>) =>
+      buildQuery(
+        query.accessRole ? [{ principalUserId: CARETAKER_ID, startsAt: null, endsAt: null }] : [],
+      ),
+    );
+    user.countDocuments.mockResolvedValue(1);
+    const res = await post();
+    expect(res.status).toBe(201);
+    expect(task.create).toHaveBeenCalledWith(
+      expect.objectContaining({ assignedTo: "", assignedToName: "" }),
+    );
+  });
+
+  it("keeps a chosen assignee as is", async () => {
+    noAssignment();
+    const res = await post({ assignedTo: CARETAKER_ID, assignedToName: "Amka" });
+    expect(res.status).toBe(201);
+    expect(task.create).toHaveBeenCalledWith(
+      expect.objectContaining({ assignedTo: CARETAKER_ID, assignedToName: "Amka" }),
+    );
+    expect(user.countDocuments).not.toHaveBeenCalled();
   });
 });

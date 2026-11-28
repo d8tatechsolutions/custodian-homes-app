@@ -195,7 +195,7 @@ const TEXT_PRIMARY = "#1e293b";
 const TEXT_SECONDARY = "#475569";
 
 function createTextFooter(recipientEmail: string): string {
-  return `\n\nThis email was sent to ${recipientEmail}. If you didn't request this, please ignore this email or contact support at ${BRAND.emails.support}.\n\n© ${new Date().getFullYear()} ${BRAND.name}. All rights reserved.`;
+  return `\n\nThis email was sent to ${recipientEmail}. If you didn't request this, please ignore this email or contact support at ${BRAND.emails.info}.\n\n© ${new Date().getFullYear()} ${BRAND.name}. All rights reserved.`;
 }
 
 function createEmailTemplate(content: string, recipientEmail: string): string {
@@ -254,7 +254,7 @@ function createEmailTemplate(content: string, recipientEmail: string): string {
                 <tr>
                   <td style="text-align: center; padding-bottom: 16px;">
                     <p style="margin: 0 0 8px; font-size: 13px; color: ${SECONDARY_COLOR}; font-weight: 500;">${BRAND.name}</p>
-                    <p style="margin: 0; font-size: 12px; color: ${SECONDARY_COLOR}; line-height: 1.6;">This email was sent to <strong>{{EMAIL}}</strong>. If you didn't request this, please ignore this email or contact support at ${BRAND.emails.support}.</p>
+                    <p style="margin: 0; font-size: 12px; color: ${SECONDARY_COLOR}; line-height: 1.6;">This email was sent to <strong>{{EMAIL}}</strong>. If you didn't request this, please ignore this email or contact support at ${BRAND.emails.info}.</p>
                   </td>
                 </tr>
                 <tr>
